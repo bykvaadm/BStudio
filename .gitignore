@@ -1,0 +1,11 @@
+presentations-style*.md
+
+# Рендер-пайплайн деки (Claude Design -> кадры) — отдельный инструмент, не часть студии
+render.js
+package.json
+package-lock.json
+node_modules/
+pdf-to-frames.command
+pptx-to-pdf.command
+to-mp4.command
+.markdownlint.json

@@ -1,0 +1,795 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BStudio — студия записи лекций</title>
+<style>
+:root{--bar:#15161c;--btn:#23252e;--btn2:#2d3038;--acc:#f5c518;--txt:#e8e9ec;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;height:100%;background:#000;color:var(--txt);font-family:-apple-system,Segoe UI,Roboto,Inter,sans-serif;overflow:hidden;}
+/* ---- setup ---- */
+#setup{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 700px at 50% 0%,#1a1d27,#0b0c0f);}
+#setup .card{width:min(560px,92vw);background:#15161d;border:1px solid #262934;border-radius:18px;padding:34px 34px 28px;box-shadow:0 24px 70px rgba(0,0,0,.5);}
+#setup h1{margin:0 0 6px;font-size:26px;}
+#setup .sub{margin:0 0 22px;color:#9aa0a8;font-size:15px;line-height:1.5;}
+#setup label{display:block;margin:14px 0 6px;color:#9aa0a8;font-size:13px;}
+#setup select{width:100%;padding:12px;border-radius:11px;background:#0e0f14;color:var(--txt);border:1px solid #2b2e38;font-size:15px;}
+button.big{width:100%;padding:14px;border:0;border-radius:12px;background:var(--btn);color:var(--txt);font-size:16px;cursor:pointer;margin-top:14px;}
+button.big:hover{background:var(--btn2);}
+button.go{background:var(--acc);color:#111;font-weight:700;}
+#restoreBox button{background:#1f2733;}
+.msg{margin-top:14px;color:#9aa0a8;font-size:13px;min-height:18px;line-height:1.5;}
+.msg.err{color:#ff7a6e;}
+/* ---- studio ---- */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0c0f;}
+#slideImg{max-width:100%;max-height:100%;object-fit:contain;}
+#camWrap{position:fixed;display:none;aspect-ratio:16/9;border-radius:14px;overflow:hidden;border:2px solid rgba(255,255,255,.85);box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:5;}
+#cam{width:100%;height:100%;object-fit:cover;display:block;}
+.camWrap.br{right:3.33%;bottom:5.19%;} .camWrap.bl{left:3.33%;bottom:5.19%;}
+.camWrap.tr{right:3.33%;top:5.19%;} .camWrap.tl{left:3.33%;top:5.19%;}
+#camWrap.full{left:0;top:0;right:auto;bottom:auto;width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;border:0;box-shadow:none;}
+#camWrap.circle{aspect-ratio:1/1;border-radius:50%;}
+/* еле-заметная крестовина-гайд для центровки лица/плеч — только в превью #camWrap, в запись (canvas #rec) не идёт */
+#camcross{position:absolute;inset:0;z-index:2;pointer-events:none;}
+#camcross i{position:absolute;background:rgba(255,255,255,.16);box-shadow:0 0 1px rgba(0,0,0,.28);}
+#camcross i.v{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px);}
+#camcross i.h{top:50%;left:0;right:0;height:1px;transform:translateY(-.5px);}
+#camcross i.c{left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;background:transparent;border:1px solid rgba(255,255,255,.20);border-radius:50%;}
+#prompter{position:fixed;left:0;right:0;top:0;height:40%;overflow:hidden;z-index:8;
+  background:rgba(8,9,12,.78);backdrop-filter:blur(2px);padding:14px 20px;cursor:pointer;border-radius:16px;}
+#prompter.bottom{top:auto;bottom:64px;height:42%;}
+#prompter.hidden{display:none;}
+#readline{position:absolute;left:8px;right:8px;z-index:0;pointer-events:none;border-radius:8px;
+  background:linear-gradient(180deg,rgba(245,224,160,0) 0%,rgba(245,224,160,.42) 33%,rgba(245,224,160,.42) 67%,rgba(245,224,160,0) 100%);}
+#timers{position:fixed;top:14px;left:14px;z-index:12;display:none;flex-direction:column;gap:6px;pointer-events:none;font-variant-numeric:tabular-nums;}
+#timers .tt{display:flex;align-items:center;gap:8px;background:rgba(12,13,17,.62);backdrop-filter:blur(4px);border:1px solid #23262f;border-radius:11px;padding:5px 11px;}
+#timers b{font-size:20px;font-weight:700;color:#f0f1f3;min-width:50px;}
+#timers .tlab{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8a8f99;}
+#tdot{width:9px;height:9px;border-radius:50%;background:#555;flex:none;}
+#scrollctl{position:fixed;display:none;z-index:9;width:50px;height:50px;border-radius:50%;align-items:center;justify-content:center;padding:0;font-size:21px;color:#fff;cursor:pointer;background:rgba(20,22,28,.92);border:1px solid #3a3f4b;backdrop-filter:blur(6px);box-shadow:0 6px 22px rgba(0,0,0,.55);transition:background .15s;}
+#scrollctl:hover{background:rgba(42,46,56,.96);}
+#countdown{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.4);color:#ff3b30;font-size:24vw;font-weight:800;text-shadow:0 8px 50px rgba(0,0,0,.7);pointer-events:none;font-variant-numeric:tabular-nums;}
+#slidethumb{position:fixed;top:14px;right:14px;width:24%;max-width:380px;aspect-ratio:16/9;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.3);box-shadow:0 6px 22px rgba(0,0,0,.5);z-index:9;display:none;pointer-events:none;}
+#advcount{position:fixed;z-index:11;display:none;align-items:center;justify-content:center;width:60px;height:60px;border-radius:50%;background:rgba(18,20,26,.92);border:2px solid var(--acc);color:var(--acc);font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 6px 24px rgba(0,0,0,.55);pointer-events:none;backdrop-filter:blur(4px);}
+#slideid{position:fixed;top:92px;left:14px;z-index:11;display:none;background:rgba(12,13,17,.8);border:1px solid #2a2e39;color:#c7cbd2;padding:3px 13px;border-radius:9px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em;pointer-events:none;backdrop-filter:blur(4px);}
+#camhint{position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:13;display:none;background:rgba(40,34,12,.92);border:1px solid var(--acc);color:#ffe9a8;padding:7px 14px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none;max-width:80vw;text-align:center;backdrop-filter:blur(4px);}
+#laserlive{position:fixed;inset:0;width:100vw;height:100vh;z-index:14;display:none;pointer-events:none;}
+#stage.laser{cursor:none;}
+.grp select{background:#23252e;color:#e8e9ec;border:1px solid #2a2e39;border-radius:8px;padding:6px;font-size:12px;max-width:160px;min-height:36px;cursor:pointer;}
+#cutbtn{background:#7c3a12;color:#ffcaa0;font-weight:600;}
+#minibar #m_cut{background:#7c3a12;color:#ffcaa0;}
+#promptInner{position:relative;z-index:1;font-size:34px;line-height:1.5;font-weight:600;text-align:left;text-shadow:0 2px 6px rgba(0,0,0,.6);}
+#promptInner p{margin:0 0 .7em;}
+#promptInner b{color:#ffe26b;} #promptInner i{font-style:italic;color:#cfe3ff;}
+#promptInner code{font-family:ui-monospace,Menlo,monospace;background:rgba(255,255,255,.1);padding:1px 6px;border-radius:5px;font-size:.9em;}
+#promptInner .p{color:var(--acc);font-weight:800;padding:0 .25em;}
+#promptInner .muted{color:#7e838c;font-style:italic;font-weight:500;}
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:none;gap:11px;align-items:center;flex-wrap:nowrap;
+  padding:12px 12px;background:linear-gradient(0deg,#0a0b0e,rgba(10,11,14,.9));border-top:1px solid #20232c;}
+#barleft{display:flex;flex-wrap:wrap;gap:9px 11px;align-items:center;flex:1;min-width:0;}
+#g-sufl{flex-basis:100%;order:0;}
+#g-cam{order:1;} #g-slide{order:2;} #g-rec{order:3;}
+button{background:var(--btn);color:var(--txt);border:0;border-radius:9px;padding:9px 12px;font-size:15px;cursor:pointer;min-height:40px;}
+button:hover{background:var(--btn2);} button.active{background:var(--acc);color:#111;}
+.grp{display:flex;gap:5px;align-items:center;flex-wrap:wrap;row-gap:6px;background:#161a23;border:1px solid #2a2e39;border-radius:13px;padding:6px 10px;}
+.grp.rec{background:#1d1517;border-color:#5e2c27;}
+.cap{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#8a8f99;padding-right:8px;margin-right:3px;border-right:1px solid #2c3039;white-space:nowrap;}
+.grp.rec .cap{color:#e08a80;border-color:#5e2c27;}
+.cap.captog{cursor:pointer;border-right:0;padding:3px 8px;margin-right:5px;border-radius:7px;background:rgba(55,210,122,.20);color:#bfe8cf;transition:background .15s,color .15s;}
+.cap.captog.off{background:rgba(150,160,172,.14);color:#878d96;}
+.cap.captog:hover{filter:brightness(1.12);}
+.vdiv{width:1px;align-self:stretch;min-height:22px;background:#2c3039;margin:0 2px;}
+.grp.rec .vdiv{background:#5e2c27;}
+.solo{background:#161a23;border:1px solid #2a2e39;border-radius:13px;}
+.solo.ok,button.ok{background:var(--acc);color:#111;border-color:var(--acc);}
+.lab{font-size:12px;color:#9aa0a8;padding:0 4px;}
+.sld{display:inline-flex;flex-direction:column;align-items:center;gap:1px;vertical-align:middle;}
+.sld input[type=range]{width:84px;}
+.sld .scap{font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;line-height:1;white-space:nowrap;}
+#slabel{font-size:13px;color:#c7cbd2;min-width:64px;text-align:center;}
+#recbtn{background:#c0392b;color:#fff;font-weight:700;}
+#recDot{width:11px;height:11px;border-radius:50%;background:#555;}
+#recDot.on{background:#ff3b30;box-shadow:0 0 0 0 rgba(255,59,48,.7);animation:pulse 1.2s infinite;}
+@keyframes pulse{70%{box-shadow:0 0 0 9px rgba(255,59,48,0);}100%{box-shadow:0 0 0 0 rgba(255,59,48,0);}}
+input[type=range]{width:90px;}
+.vu{display:inline-block;width:48px;height:8px;border-radius:5px;background:#23252e;overflow:hidden;vertical-align:middle;}
+.vu>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2e8b45,#f5c518,#ff3b30);transition:width .05s linear;}
+#micwarn{display:none;color:#ff7a6e;font-size:12px;font-weight:700;padding:0 4px;}
+.sp{flex:1;}
+#rec{display:none;}
+#back{font-size:12px;}
+#minibar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:25;display:none;gap:13px;align-items:flex-start;
+  background:rgba(16,18,24,.9);backdrop-filter:blur(6px);border:1px solid #2a2e39;border-radius:15px;padding:7px 9px;box-shadow:0 10px 34px rgba(0,0,0,.5);}
+#minibar button{background:#23252e;color:#e8e9ec;border:0;border-radius:11px;padding:9px 13px;font-size:17px;min-height:46px;cursor:pointer;}
+#minibar button:hover{background:#2d3038;} #minibar button.active{background:var(--acc);color:#111;}
+#minibar #m_rec,#minibar #m_stop{background:#c0392b;color:#fff;}
+#minibar .mdiv{width:1px;height:24px;background:#2c3039;margin:0 2px;}
+#minibar .mg{display:flex;flex-direction:column;align-items:center;gap:3px;}
+#minibar .mr{display:flex;gap:6px;align-items:center;}
+#minibar .mc{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:#8a8f99;line-height:1;}
+@media(max-width:760px){ #promptInner{font-size:30px;} button{padding:8px 10px;font-size:14px;} .lab{display:none;} }
+</style></head>
+<body>
+
+<div id="setup"><div class="card">
+  <h1>🎬 BStudio</h1>
+  <p class="sub">Укажи корневую папку курса — выберешь урок и источник слайдов. Студия собирает <b>все</b> найденные варианты: и <code>deck_frames/</code>, и каждый PDF рядом с уроком. Речитатив — из <code>03-script.md</code>. Нужен Chrome.</p>
+  <div id="restoreBox" style="display:none"></div>
+  <button id="pickCourse" class="big">📁 Выбрать папку курса</button>
+  <div id="lessonBox" style="display:none">
+    <label>Урок</label>
+    <select id="lessonSel"></select>
+    <label>Слайды</label>
+    <select id="sourceSel"></select>
+    <button id="go" class="big go">▶ Поехали</button>
+  </div>
+  <div id="setupMsg" class="msg"></div>
+</div></div>
+
+<div id="stage"><img id="slideImg" alt=""></div>
+<div id="camWrap" class="camWrap br"><video id="cam" playsinline muted></video><div id="camcross"><i class="v"></i><i class="h"></i><i class="c"></i></div></div>
+<div id="prompter"><div id="readline"></div><div id="promptInner"></div></div>
+<button id="scrollctl" title="суфлёр: пуск/пауза">▶</button>
+<canvas id="rec"></canvas>
+<img id="slidethumb" alt="">
+<div id="countdown"></div>
+<div id="camhint"></div>
+<div id="slideid"></div>
+<div id="advcount"></div>
+<canvas id="laserlive"></canvas>
+
+<div id="timers">
+  <div class="tt"><span class="tdot" id="tdot"></span><b id="totTime">0:00</b><span class="tlab">запись</span></div>
+  <div class="tt"><span class="tdot" style="visibility:hidden"></span><b id="slTime">0:00</b><span class="tlab">слайд</span></div>
+</div>
+
+<div id="bar">
+  <div id="barleft">
+  <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="back" title="к выбору урока">☰</button><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
+  <div class="grp" id="g-sufl"><span class="cap captog" id="suflcap" title="показать / скрыть суфлёр">суфлёр</span><button id="play">▶</button>
+     <span class="vdiv"></span>
+     <button id="spdm">–</button><span class="lab">скор <b id="spdval">7</b></span><button id="spdp">+</button>
+     <span class="vdiv"></span>
+     <button id="fontm">A−</button><span class="lab"><b id="fontval">34</b></span><button id="fontp">A+</button>
+     <span class="vdiv"></span>
+     <button id="tmpm" title="темп −5 сл/мин">–</button><span class="lab" title="темп чтения вслух, рекомендуется 120–150 сл/мин">темп <b id="tempoVal">—</b></span><button id="tmpp" title="темп +5 сл/мин">+</button>
+     <span class="vdiv"></span>
+     <button id="autobtn" title="автопрокрутка суфлёра после смены слайда (задержка 1с)">авто</button>
+     <button id="autoadvbtn" title="автопереход на следующий слайд по концу речитатива (пауза 2с)">автослайд</button>
+     <span class="vdiv"></span>
+     <button id="posbtn" title="позиция суфлёра"></button>
+     <span class="vdiv"></span>
+     <span class="lab">Ш</span><button id="pwm" title="уже">–</button><button id="pwp" title="шире">+</button>
+     <span class="vdiv"></span>
+     <span class="lab">В</span><button id="phm" title="ниже">–</button><button id="php" title="выше">+</button>
+     <span class="vdiv"></span>
+     <span class="sld"><input id="opac" type="range" min="0.3" max="1" step="0.02"><span class="scap">фон</span></span></div>
+  <div class="grp" id="g-cam"><span class="cap">камера</span><button id="cambtn">📷 вкл</button>
+     <select id="camsel" title="выбор камеры (Continuity Camera — айфон)"></select>
+     <span class="vdiv"></span>
+     <button id="cornerbtn" title="позиция камеры"></button><button id="mirrorbtn" title="зеркало"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 4 11 6 11 18 3 20Z"/><path d="M21 4 13 6 13 18 21 20Z"/><line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="1.5 2"/><path d="M5 12h3M6.6 10.4 8.3 12 6.6 13.6"/><path d="M19 12h-3M17.4 10.4 15.7 12 17.4 13.6"/></svg></button>
+     <button id="camfullbtn" title="камера на весь экран (вкл/выкл)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17.8c0-2.3 1.8-3.7 4-3.7s4 1.4 4 3.7"/></svg></button>
+     <button id="camshape" title="форма камеры: ▭ прямоугольник / ◯ круг">▭</button>
+     <button id="metabtn" title="сбросить камеру в дефолт (низ-право, стандартный размер). Слайды без meta показывают эту базу; meta переопределяет только свой слайд.">сброс камеры</button>
+     <button id="laserbtn" title="лазерная указка: курсор пишется в видео красной точкой со следом (клавиша L)">🔴 курсор</button>
+     <button id="metasavebtn" title="записать текущие параметры камеры в скрипт (&lt;!-- meta:camera … --&gt;) для этого слайда">📷→скрипт</button>
+     <span class="vdiv"></span>
+     <span class="sld"><input id="camsz" type="range" min="0.14" max="0.42" step="0.01"><span class="scap">размер</span></span>
+     <span class="sld"><input id="camzoom" type="range" min="1" max="2.5" step="0.1" title="приблизить камеру (цифровой зум)"><span class="scap">зум</span></span>
+     <span class="sld"><input id="campanx" type="range" min="-1" max="1" step="0.05" title="сдвиг картинки по горизонтали (с зумом)"><span class="scap">↔ сдвиг</span></span>
+     <span class="sld"><input id="campany" type="range" min="-1" max="1" step="0.05" title="сдвиг картинки по вертикали (с зумом)"><span class="scap">↕ сдвиг</span></span>
+     <span class="vdiv"></span>
+     <span class="sld"><input id="thumbop" type="range" min="0" max="1" step="0.05" title="Прозрачность миниатюры слайда в углу — видна только в режиме «камера на весь экран», чтобы видеть слайд, говоря в камеру. 0 — миниатюры нет, 1 — непрозрачная. В запись не попадает."><span class="scap">миниатюра</span></span></div>
+  <div class="grp rec" id="g-rec"><span class="cap">запись</span><span id="recDot"></span>
+     <button id="recbtn">⏺ Запись</button>
+     <button id="pausebtn" style="display:none" title="пауза/продолжить">⏸</button>
+     <button id="stopbtn" style="display:none" title="стоп">⏹</button>
+     <span id="recTime" class="lab">0:00</span>
+     <span class="vdiv"></span>
+     <button id="cutbtn" title="поставить отметку (таймкод) в записи">⚑ отметка</button>
+     <span class="vdiv"></span>
+     <span class="lab" title="уровень микрофона">🎙</span><span class="vu"><i id="vubar"></i></span>
+     <span id="micwarn" title="нет звука!">⚠ нет звука</span>
+     <select id="micsel" title="выбор микрофона"></select>
+     <span class="vdiv"></span>
+     <button id="resbtn" title="разрешение">1080p</button>
+     <span class="vdiv"></span>
+     <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
+  </div>
+  <div class="grp" id="g-more"><span class="cap">ещё</span>
+     <button id="savebtn" title="запомнить текущие настройки">💾</button>
+     <button id="resetbtn" title="сброс: вернуть сохранённые или стандартные">↺</button>
+     <span class="vdiv"></span>
+     <button id="hidebar" title="свернуть панель">⌄ свернуть</button>
+     <span class="vdiv"></span>
+     <button id="full" title="полный экран">⛶</button></div>
+</div>
+
+<div id="minibar">
+  <div class="mg"><div class="mr"><button id="m_prev" title="назад">◀</button><button id="m_next" title="вперёд">▶</button></div><span class="mc">слайд</span></div>
+  <div class="mg"><div class="mr"><button id="m_play" title="суфлёр: пуск/пауза">▶</button></div><span class="mc">суфлёр</span></div>
+  <div class="mg"><div class="mr"><button id="m_rec" title="запись">⏺</button><button id="m_pause" style="display:none" title="пауза/продолжить">⏸</button><button id="m_stop" style="display:none" title="стоп">⏹</button><button id="m_cut" title="отметка">⚑</button></div><span class="mc">запись</span></div>
+  <div class="mg"><div class="mr"><button id="m_cam" title="камера">📷</button><button id="m_camfull" title="камера на весь экран"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17.8c0-2.3 1.8-3.7 4-3.7s4 1.4 4 3.7"/></svg></button></div><span class="mc">камера</span></div>
+  <div class="mg"><div class="mr"><button id="m_expand" title="показать панель">⌃</button></div><span class="mc">панель</span></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
+const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
+
+/* ---------- IndexedDB (хранит handle папки курса) ---------- */
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open("studio_db",1);r.onupgradeneeded=()=>r.result.createObjectStore("h");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function idbSet(k,v){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("h","readwrite");t.objectStore("h").put(v,k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
+async function idbGet(k){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("h","readonly");const q=t.objectStore("h").get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+
+/* ---------- парсер речитатива (.md) ---------- */
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function inlineHtml(s){s=esc(s);s=s.replace(/\[P\]/g,'<span class="p">·</span>');s=s.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");s=s.replace(/`(.+?)`/g,"<code>$1</code>");s=s.replace(/\*(.+?)\*/g,"<i>$1</i>");return s;}
+function paraHtml(p){return p.length?p.map(x=>"<p>"+inlineHtml(x)+"</p>").join(""):'<p class="muted">— титульный/без речитатива, жми ▶ дальше —</p>';}
+function parseCamMeta(line){const s=line.replace(/<!--|-->/g,"").replace(/^[#\s]*meta:camera/i,"").trim();const cam={};s.split(/[,;]+/).forEach(t=>{t=t.trim();if(!t)return;const mm=t.match(/^(\w+)\s*[:=]\s*(.+)$/);if(mm){const k=mm[1].toLowerCase(),v=mm[2].trim().toLowerCase();if(k==="type"||k==="shape")cam.shape=(v==="round"||v==="circle")?"circle":"rect";else if(k==="position"||k==="pos"){const n=parseInt(v,10);if(n>=1&&n<=8)cam.corner=CAMSEQ[n-1];else if(CAMPOS[v])cam.corner=v;}else if(k==="size"){let n=parseFloat(v);if(n>1)n/=100;if(isFinite(n))cam.size=n;}else if(k==="zoom"){const n=parseFloat(v);if(isFinite(n))cam.zoom=n;}else if(k==="cam"||k==="camera"||k==="show")cam.on=(v==="on"||v==="1"||v==="true"||v==="show");else if(k==="full"||k==="fullscreen")cam.full=(v==="on"||v==="1"||v==="true");}else{const v=t.toLowerCase();if(v==="off"||v==="hide")cam.on=false;else if(v==="on"||v==="show")cam.on=true;else if(v==="fullscreen"||v==="full")cam.full=true;else if(v==="round"||v==="circle")cam.shape="circle";else if(v==="rect"||v==="square")cam.shape="rect";}});return Object.keys(cam).length?cam:null;}
+function parseScript(md){
+  const lines=md.split(/\r?\n/); const slides=[]; let cur=null,para=[];
+  const flush=()=>{if(cur&&para.length){const t=para.join(" ").trim();if(t)cur.paras.push(t);}para=[];};
+  for(const line of lines){
+    const m=line.match(/^###\s+Слайд\s+([0-9.]+)\s*(?:[—–-].*)?$/);
+    if(m){flush();cur={id:m[1],paras:[]};slides.push(cur);continue;}
+    if(/^##\s+Титульн/i.test(line)){flush();cur={id:"титул",paras:[],title:true};slides.push(cur);continue;}
+    if(/^\s*<!--/.test(line)){if(cur&&/meta:camera/i.test(line)){const cm=parseCamMeta(line);if(cm)cur.cam=cm;}continue;}
+    if(cur&&/^##\s*meta:camera/i.test(line)){const cm=parseCamMeta(line);if(cm)cur.cam=cm;continue;}
+    if(line.startsWith("#")||line.startsWith(">")||line.trim()==="---"){flush();continue;}
+    if(line.trim()===""){flush();} else para.push(line.trim());
+  }
+  flush(); return slides;
+}
+
+/* ---------- File System Access: поиск уроков ---------- */
+/* Собираем ВСЕ источники слайдов, какие нашлись, и даём выбрать преподавателю.
+   Раньше побеждал первый подошедший, и это мешало жить: в уроке одновременно
+   лежат deck_frames на один кадр (обложка для сайта) и полная дека в PDF —
+   папка перекрывала PDF, и до него дело не доходило. Теперь оба в списке.
+   PPTX тоже попадает в список, но помечен как непригодный: браузерного движка
+   для него нет, нужна конвертация (см. pptx-to-pdf.command). */
+async function findDeckSources(dirHandle){
+  const out = [];
+
+  // deck_frames/ — в уроке или на уровень глубже. Считаем кадры: по числу сразу
+  // видно, это полная дека или обложка на один слайд.
+  const framesIn = async (dir, label) => {
+    for await (const [name,h] of dir.entries()){
+      if(h.kind!=="directory" || name!=="deck_frames") continue;
+      let n=0; for await (const [fn] of h.entries()) if(/^p-\d+\.png$/i.test(fn)) n++;
+      if(n) out.push({kind:"png", handle:h, name:(label?label+"/":"")+"deck_frames", count:n});
+    }
+  };
+  const filesIn = async (dir, label) => {
+    for await (const [name,h] of dir.entries()){
+      if(h.kind!=="file") continue;
+      if(/\.pdf$/i.test(name))  out.push({kind:"pdf",  file:h, name:(label?label+"/":"")+name});
+      if(/\.pptx$/i.test(name)) out.push({kind:"pptx", file:h, name:(label?label+"/":"")+name});
+    }
+  };
+
+  await framesIn(dirHandle, "");
+  await filesIn(dirHandle, "");
+  for await (const [name,h] of dirHandle.entries()){
+    if(h.kind==="directory" && name!=="node_modules" && name!=="assets" && name!=="deck_frames"){
+      try{ await framesIn(h, name); await filesIn(h, name); }catch(e){}
+    }
+  }
+
+  // Порядок = порядок предпочтения, потому что первый пункт станет значением по
+  // умолчанию. Кадры грузятся мгновенно и не требуют сети, поэтому они впереди —
+  // но только полноценные. Папка на пару кадров это почти всегда обложка для
+  // сайта, а не дека, и ставить её дефолтом означало бы, что запись начнётся с
+  // одного слайда. Такие уезжают в конец списка, но из него не исчезают.
+  const COVER = 5;                       // меньше этого — считаем обложкой
+  const rank = x => x.kind==="png" ? (x.count>=COVER ? 0 : 3)
+                  : x.kind==="pdf" ? 1 : 4;   // pptx последний: его не нарисовать
+  out.sort((a,b)=> rank(a)-rank(b)
+                || (b.count||0)-(a.count||0)
+                || a.name.localeCompare(b.name));
+  return out;
+}
+
+// Человекочитаемая подпись источника для выпадающего списка.
+function sourceLabel(src){
+  if(src.kind==="png")  return `${src.name} — кадры, ${src.count} шт.`;
+  if(src.kind==="pdf")  return `${src.name} — PDF`;
+  return `${src.name} — PPTX, нужна конвертация`;
+}
+
+async function scanLessons(root){
+  const lessons=[];
+  async function walk(dir,rel){
+    let scriptHandle=null; const subs=[];
+    for await (const [name,h] of dir.entries()){
+      if(h.kind==="file" && name==="03-script.md") scriptHandle=h;
+      else if(h.kind==="directory" && name!=="node_modules" && name!=="assets" && name!=="deck_frames") subs.push([name,h]);
+    }
+    if(scriptHandle){
+      const sources=await findDeckSources(dir);
+      lessons.push({
+        name: rel||"(корень)",
+        scriptHandle,
+        sources,
+        dirHandle: dir,
+        // PPTX виден в списке, но сам по себе урок готов, только если есть хоть
+        // один источник, который студия умеет рисовать.
+        ready: sources.some(s=>s.kind!=="pptx"),
+        hint: sources.some(s=>s.kind==="pptx") ? sources.find(s=>s.kind==="pptx").name : null
+      });
+    }
+    for(const [name,h] of subs) await walk(h, rel?rel+"/"+name:name);
+  }
+  await walk(root,"");
+  lessons.sort((a,b)=>a.name.localeCompare(b.name));
+  return lessons;
+}
+/* PDF → массив object-URL с картинками страниц.
+
+   pdf.js тянется с CDN и ТОЛЬКО когда PDF реально встретился: путь с PNG должен
+   остаться полностью офлайновым, ради него студию и открывают без интернета.
+   Версия не одна, а списком кандидатов: у cdnjs пути к сборкам менялись между
+   мажорами (.js → .mjs), и жёстко прибитая версия однажды тихо отвалится. */
+let PDFJS=null;
+async function ensurePdfJs(){
+  if(PDFJS) return PDFJS;
+  const candidates=[
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.min.mjs",
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.mjs",
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs"
+  ];
+  let last=null;
+  for(const url of candidates){
+    try{
+      const lib=await import(/* webpackIgnore: true */ url);
+      lib.GlobalWorkerOptions.workerSrc=url.replace(/pdf\.min\.mjs$/,"pdf.worker.min.mjs");
+      PDFJS=lib; return lib;
+    }catch(e){ last=e; }
+  }
+  throw new Error("Не смог загрузить pdf.js (нужен интернет). Либо сконвертируй деку в PNG через render.js. "+(last?last.message:""));
+}
+
+/* Собранные при последнем рендере жалобы pdf.js. Нужны вот зачем: если pdf.js
+   встречает градиент, который не умеет (например ShadingType 1, функциональный),
+   он не падает и не оставляет пустоту — он заливает область СПЛОШНЫМ РОЗОВЫМ.
+   В исходниках это буквально `class DummyShadingPattern { getPattern(){ return
+   "hotpink"; } }`. Молча получить розовый титульный слайд посреди записи — худший
+   исход, поэтому жалобы перехватываем и показываем. Событийного API у pdf.js для
+   этого нет, warn() пишет прямо в console.log, отсюда перехват. */
+let PDF_WARNINGS=[];
+async function pdfToUrls(fileHandle, onProgress){
+  const lib=await ensurePdfJs();
+  const buf=await (await fileHandle.getFile()).arrayBuffer();
+  PDF_WARNINGS=[];
+  const origLog=console.log;
+  console.log=(...a)=>{ const t=a.join(" "); if(/warning|unsupported/i.test(t)) PDF_WARNINGS.push(t); origLog.apply(console,a); };
+  try{
+  const pdf=await lib.getDocument({data:buf}).promise;
+  const TARGET_W=1920;                       // тот же размер, что у render.js
+  const urls=[];
+  for(let n=1;n<=pdf.numPages;n++){
+    const page=await pdf.getPage(n);
+    const base=page.getViewport({scale:1});
+    const vp=page.getViewport({scale:TARGET_W/base.width});
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.round(vp.width); canvas.height=Math.round(vp.height);
+    await page.render({canvasContext:canvas.getContext("2d",{alpha:false}), viewport:vp}).promise;
+    const blob=await new Promise(res=>canvas.toBlob(res,"image/png"));
+    urls.push(URL.createObjectURL(blob));
+    if(onProgress) onProgress(n, pdf.numPages);
+  }
+  return urls;
+  } finally { console.log=origLog; }
+}
+
+// Что именно сказать преподавателю, если pdf.js не справился.
+function pdfWarningText(){
+  if(!PDF_WARNINGS.length) return "";
+  const shading=PDF_WARNINGS.some(w=>/ShadingType/i.test(w));
+  if(shading) return "В этом PDF есть градиенты, которые браузер рисовать не умеет — он заливает их розовым. "+
+                     "Для записи прогоните pdf-to-frames.command: кадры получатся с верными цветами.";
+  return "Браузер отрисовал PDF с оговорками ("+PDF_WARNINGS.length+"). Сверьте цвета со слайдами перед записью.";
+}
+
+async function loadLesson(lesson, src){
+  src = src || (lesson.sources||[]).find(x=>x.kind!=="pptx");
+  if(!src) throw new Error("В уроке нет ни deck_frames/, ни PDF рядом с 03-script.md.");
+  if(src.kind==="pptx") throw new Error(
+    "Нашёл «"+src.name+"», но PPTX браузер не рисует. Сконвертируй в PDF одной командой:\n"+
+    "soffice --headless --convert-to pdf \""+src.name+"\"\n"+
+    "PDF положи рядом — студия подхватит его сама.");
+
+  let imgs=[], manifest=null;
+  if(src.kind==="pdf"){
+    const msg=document.querySelector("#setupMsg");
+    imgs=await pdfToUrls(src.file,(n,total)=>{ if(msg) msg.textContent="Рендерю PDF: страница "+n+" из "+total+"…"; });
+  }else{
+    const files=[];
+    for await (const [name,h] of src.handle.entries()){
+      if(/^p-\d+\.png$/i.test(name)) files.push([name,h]);
+      else if(name==="manifest.json"){ try{ manifest=JSON.parse(await (await h.getFile()).text()); }catch(e){} }
+    }
+    files.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
+    for(const [name,h] of files){ imgs.push(URL.createObjectURL(await h.getFile())); }
+  }
+  const slides=parseScript(await (await lesson.scriptHandle.getFile()).text());
+  const byId={}; slides.forEach(s=>byId[s.id]=s);
+  const data=[];
+  for(let i=0;i<imgs.length;i++){
+    let paras=[], isTitle=false, cam=null, sid="";
+    if(manifest&&manifest.slides&&manifest.slides[i]){ const mid=manifest.slides[i].id; const s=byId[mid]; if(s){paras=s.paras;isTitle=!!s.title;cam=s.cam||null;} sid=mid||(s&&s.id)||""; }
+    else if(slides[i]){ paras=slides[i].paras; isTitle=!!slides[i].title; cam=slides[i].cam||null; sid=slides[i].id||""; }
+    const plain=paras.join("\n\n"); data.push({img:imgs[i], html:paraHtml(paras), plain, title:isTitle, cam, id:sid, words:plain.replace(/\[P\]/g," ").replace(/[*`]/g,"").trim().split(/\s+/).filter(Boolean).length});
+  }
+  return data;
+}
+
+/* ---------- setup UI ---------- */
+let COURSE=null, LESSONS=[], CURLESSON=null;
+async function afterCourse(handle){
+  COURSE=handle; $("#setupMsg").textContent="Сканирую уроки…"; $("#setupMsg").className="msg";
+  try{
+    LESSONS=await scanLessons(handle);
+    const ready=LESSONS.filter(l=>l.ready);
+    if(!ready.length){ $("#setupMsg").textContent="Не нашёл уроков. Рядом с 03-script.md нужна папка deck_frames/ с PNG или PDF деки."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":""); $("#setupMsg").className="msg err"; return; }
+    const sel=$("#lessonSel"); sel.innerHTML="";
+    ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name; sel.appendChild(o); });
+    const last=LS("lastLesson",null); if(last!=null){ const idx=LESSONS.findIndex(l=>l.name===last&&l.ready); if(idx>=0) sel.value=String(idx); }
+    sel.onchange=fillSources; fillSources();
+    $("#lessonBox").style.display="block"; $("#setupMsg").textContent=ready.length+" урок(ов) найдено.";
+  }catch(e){ $("#setupMsg").textContent="Ошибка чтения папки: "+e.message; $("#setupMsg").className="msg err"; }
+}
+// Заполняет список источников выбранного урока. PPTX показываем, но выбрать
+// нельзя: студия его не нарисует, а молча прятать — потом гадать, куда делся.
+function fillSources(){
+  const lesson=LESSONS[+$("#lessonSel").value]; const ss=$("#sourceSel");
+  ss.innerHTML="";
+  (lesson.sources||[]).forEach((src,i)=>{
+    const o=document.createElement("option");
+    o.value=String(i); o.textContent=sourceLabel(src); o.disabled=(src.kind==="pptx");
+    ss.appendChild(o);
+  });
+  // Запоминаем выбор по конкретному уроку: у разных уроков разные деки.
+  const remembered=LS("src:"+lesson.name,null);
+  const idx=(lesson.sources||[]).findIndex(x=>x.name===remembered && x.kind!=="pptx");
+  ss.value=String(idx>=0?idx:(lesson.sources||[]).findIndex(x=>x.kind!=="pptx"));
+}
+
+async function startSelected(){
+  const idx=+$("#lessonSel").value; const lesson=LESSONS[idx];
+  const src=(lesson.sources||[])[+$("#sourceSel").value];
+  if(!src||src.kind==="pptx"){ $("#setupMsg").textContent="Этот источник студия не нарисует — сконвертируйте PPTX в PDF (pptx-to-pdf.command)."; $("#setupMsg").className="msg err"; return; }
+  $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":"Загружаю кадры…"; $("#setupMsg").className="msg";
+  try{
+    SLIDES=await loadLesson(lesson, src); CURLESSON=lesson;
+    save("lastLesson",lesson.name); save("src:"+lesson.name, src.name);
+    const warn=(src.kind==="pdf")?pdfWarningText():"";
+    if(warn){ alert("⚠ "+warn); }
+    $("#setup").style.display="none"; $("#bar").style.display="flex";
+    startStudio();
+  }catch(e){ $("#setupMsg").textContent=e.message; $("#setupMsg").className="msg err"; }
+}
+function bindSetup(){
+  if(!window.showDirectoryPicker){
+    $("#setupMsg").innerHTML="Нужен Chrome (или Edge): в этом браузере нет File System Access API."; $("#setupMsg").className="msg err";
+    $("#pickCourse").disabled=true;
+  }
+  $("#pickCourse").onclick=async()=>{
+    try{ const h=await window.showDirectoryPicker({mode:"readwrite"}); await idbSet("course",h); await afterCourse(h); }
+    catch(e){ if(e.name!=="AbortError") $("#setupMsg").textContent="Не удалось открыть папку: "+e.message; }
+  };
+  $("#go").onclick=startSelected;
+  idbGet("course").then(async h=>{
+    if(!h) return;
+    const box=$("#restoreBox"); box.style.display="block";
+    const b=document.createElement("button"); b.className="big"; b.textContent="↩ Открыть последний курс";
+    b.onclick=async()=>{ try{ let p=await h.queryPermission({mode:"readwrite"}); if(p!=="granted") p=await h.requestPermission({mode:"readwrite"}); if(p==="granted") await afterCourse(h); else $("#setupMsg").textContent="Доступ к папке не выдан."; }catch(e){ $("#setupMsg").textContent="Не удалось: "+e.message; } };
+    box.appendChild(b);
+  }).catch(()=>{});
+}
+
+/* =========================================================
+   СТУДИЯ (камера + суфлёр + запись) — после загрузки урока
+   ========================================================= */
+let SLIDES=[];
+const stage=$("#slideImg"), prompter=$("#prompter"), promptInner=$("#promptInner"), readline=$("#readline");
+const cam=$("#cam"), camWrap=$("#camWrap"), canvas=$("#rec"), label=$("#slabel");
+const recDot=$("#recDot"), recTime=$("#recTime");
+let st={ i:0, playing:false, speed:7, tempo:LS("tempo",135), font:LS("font",34),
+  camOn:false, camFull:false, corner:LS("corner","br"), camSize:LS("camSize",0.25), mirror:LS("mirror",true),
+  res:LS("res","1080"), burnIn:LS("burnIn",false), promptPos:LS("promptPos","top"), opacity:LS("opacity",0.78),
+  promptW:LS("promptW",1.0), promptH:LS("promptH",0.4), autoScroll:LS("autoScroll",false),
+  autoAdvance:LS("autoAdvance",false), camDeviceId:LS("camDeviceId",""), micDeviceId:LS("micDeviceId",""), thumbOpacity:LS("thumbOpacity",0.3), camZoom:LS("camZoom",1), camPanX:LS("camPanX",0), camPanY:LS("camPanY",0), camShape:LS("camShape","rect"),
+  followMeta:LS("followMeta",false), camHide:false };
+let curImg=new Image();
+const CAMPOS={tl:["l","t"],tc:["c","t"],tr:["r","t"],mr:["r","m"],br:["r","b"],bc:["c","b"],bl:["l","b"],ml:["l","m"]};
+const CAMSEQ=["tl","tc","tr","mr","br","bc","bl","ml"];
+let readPos=0; const PROMPT_PAD=14; let autoTimer=0; let recDiscard=false; let slideAccum=0, slideLast=Date.now(); let prePausePlaying=false; let scrollHideTimer=0; let advTimer=0; let advArmed=true; let advChaining=false; let scrollAnim=0, readTarget=null;
+let mediaStream=null, micTrack=null, audioCtx=null, analyser=null, vuData=null, rec=null, recChunks=[], recording=false, recAccum=0, recLast=0, recPaused=false, drawing=false, started=false;
+let recWritable=null, recName="", markers=[], starting=false;
+
+function showSlide(i){
+  st.i=Math.max(0,Math.min(SLIDES.length-1,i));
+  const s=SLIDES[st.i];
+  stage.src=s.img; curImg=new Image(); curImg.src=s.img; const th=$("#slidethumb");if(th)th.src=s.img;
+  promptInner.innerHTML=s.html; prompter.scrollTop=0; readPos=PROMPT_PAD; positionRead(); syncSpeed(); applySpeed();
+  label.textContent=`${st.i+1} / ${SLIDES.length}`;
+  const si=$("#slideid");if(si){si.textContent=(s.id&&s.id!=="титул")?("слайд "+s.id):(s.title?"титул":"—");si.style.display="block";}
+  if(recording&&!recPaused) addMarker("slide");
+  if(!(recording&&recPaused)){ slideAccum=0; slideLast=Date.now(); }
+  st.playing=false; syncPlay();
+  clearTimeout(autoTimer); cancelAdv(); advArmed=true;
+  if((st.autoScroll||advChaining) && !(SLIDES[st.i]&&SLIDES[st.i].title)) autoTimer=setTimeout(()=>{if(recPaused)return;st.playing=true;syncPlay();},1000);
+  slideCam();
+}
+function applyFont(){if(!isFinite(st.font))st.font=DEFAULTS.font;promptInner.style.fontSize=st.font+"px";$("#fontval").textContent=st.font;syncSpeed();applySpeed();}
+function cwPx(){return (promptInner&&promptInner.clientWidth)||(window.innerWidth*st.promptW-40);}
+function tempoToSpeed(t){const sl=SLIDES[st.i],N=sl?sl.words:0,H=promptInner?promptInner.offsetHeight:0;return (N>0&&H>0)?t*H/(N*60):0;}
+function speedToTempo(v){const sl=SLIDES[st.i],N=sl?sl.words:0,H=promptInner?promptInner.offsetHeight:0;return (N>0&&H>0)?v*N*60/H:st.tempo;}
+function syncSpeed(){if(!isFinite(st.tempo)){st.tempo=DEFAULTS.tempo;save("tempo",st.tempo);}st.speed=tempoToSpeed(st.tempo);if(!isFinite(st.speed))st.speed=0;}
+function applySpeed(){const sv=$("#spdval");if(sv)sv.textContent=Math.round(st.speed);const tv=$("#tempoVal");if(tv){tv.textContent=Math.round(st.tempo);tv.style.color=(st.tempo>=120&&st.tempo<=150)?"#37d27a":"#f0f1f3";}}
+function applyPromptBox(){prompter.classList.toggle("bottom",st.promptPos==="bottom");prompter.style.background=`rgba(8,9,12,${st.opacity})`;prompter.style.width=(st.promptW*100).toFixed(0)+"%";prompter.style.left=((1-st.promptW)/2*100).toFixed(1)+"%";prompter.style.right="auto";prompter.style.height=(st.promptH*100).toFixed(0)+"%";posIcon();positionRead();syncSpeed();applySpeed();}
+function applyCam(){camWrap.style.display=(st.camOn&&!st.camHide)?"block":"none";if(st.camFull){camWrap.className="camWrap full";camWrap.style.left=camWrap.style.right=camWrap.style.top=camWrap.style.bottom=camWrap.style.transform=camWrap.style.width="";}else{camWrap.className="camWrap"+(st.camShape==="circle"?" circle":"");const p=CAMPOS[st.corner]||CAMPOS.br;camWrap.style.left=camWrap.style.right=camWrap.style.top=camWrap.style.bottom="";if(p[0]==="l")camWrap.style.left="3.33%";else if(p[0]==="r")camWrap.style.right="3.33%";else camWrap.style.left="50%";if(p[1]==="t")camWrap.style.top="5.19%";else if(p[1]==="b")camWrap.style.bottom="5.19%";else camWrap.style.top="50%";camWrap.style.transform=(p[0]==="c"||p[1]==="m")?("translate("+(p[0]==="c"?"-50%":"0")+","+(p[1]==="m"?"-50%":"0")+")"):"";camWrap.style.width=(st.camSize*100).toFixed(1)+"%";}const _z=st.camZoom||1,_fx=((st.camPanX||0)+1)/2,_fy=((st.camPanY||0)+1)/2;cam.style.transformOrigin=((st.mirror?(1-_fx):_fx)*100).toFixed(1)+"% "+(_fy*100).toFixed(1)+"%";cam.style.transform="scale("+(st.mirror?-_z:_z)+","+_z+")";const cb=$("#cambtn");if(cb)cb.classList.toggle("active",st.camOn);const mc=$("#m_cam");if(mc)mc.classList.toggle("active",st.camOn);const mb=$("#mirrorbtn");if(mb)mb.classList.toggle("active",st.mirror);const fb=$("#camfullbtn");if(fb)fb.classList.toggle("active",st.camFull);const mf=$("#m_camfull");if(mf)mf.classList.toggle("active",st.camFull);const th=$("#slidethumb");if(th){th.style.display=(st.camFull&&st.thumbOpacity>0)?"block":"none";th.style.opacity=st.thumbOpacity;}const sh=$("#camshape");if(sh){sh.textContent=st.camShape==="circle"?"◯":"▭";}cornerIcon();}
+function posIcon(){const pb=$("#posbtn");if(!pb)return;const up=st.promptPos==="bottom";pb.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle">'+(up?'<path d="M12 10V3M8.6 6 12 2.6 15.4 6"/><rect x="4.5" y="13" width="15" height="7" rx="1.6"/><line x1="7.5" y1="16.6" x2="16.5" y2="16.6"/>':'<rect x="4.5" y="4" width="15" height="7" rx="1.6"/><line x1="7.5" y1="7.4" x2="16.5" y2="7.4"/><path d="M12 14v7M8.6 18 12 21.4 15.4 18"/>')+'</svg>';}
+function cornerIcon(){const cb=$("#cornerbtn");if(!cb)return;const A={tl:"M8.5 8.5 4 4M4 7.2 4 4 7.2 4",tc:"M12 8 12 3.5M9.5 6 12 3.5 14.5 6",tr:"M15.5 8.5 20 4M16.8 4 20 4 20 7.2",mr:"M16 12 20.5 12M18 9.5 20.5 12 18 14.5",br:"M15.5 15.5 20 20M20 16.8 20 20 16.8 20",bc:"M12 16 12 20.5M9.5 18 12 20.5 14.5 18",bl:"M8.5 15.5 4 20M7.2 20 4 20 4 16.8",ml:"M8 12 3.5 12M6 9.5 3.5 12 6 14.5"};let p="";for(const k in A){const on=k===st.corner;p+='<path d="'+A[k]+'" stroke="'+(on?"var(--acc)":"#6b7280")+'" stroke-width="'+(on?2.4:1.5)+'"'+(on?' style="filter:drop-shadow(0 0 2.5px var(--acc))"':"")+'/>';}cb.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="9.5" y="9.5" width="5" height="5" rx="1.2" stroke="#6b7280" stroke-width="1.3"/>'+p+'</svg>';}
+let camBase={}, camHintTimer=0;
+function snapshotCamBase(){camBase={camShape:st.camShape,corner:st.corner,camSize:st.camSize,camFull:st.camFull,camZoom:st.camZoom,camHide:false};}
+function setCam(c){st.camShape=c.camShape;st.corner=c.corner;st.camSize=c.camSize;st.camFull=c.camFull;st.camZoom=c.camZoom;st.camHide=!!c.camHide;applyCam();const a=$("#camsz");if(a)a.value=st.camSize;const b=$("#camzoom");if(b)b.value=st.camZoom;}
+function resetCamDefault(){st.camShape="rect";st.corner="br";st.camSize=0.25;st.camFull=false;st.camZoom=1;st.camPanX=0;st.camPanY=0;st.camHide=false;save("corner","br");save("camSize",0.25);save("camShape","rect");save("camZoom",1);save("camPanX",0);save("camPanY",0);snapshotCamBase();applyCam();applyAllControls();}
+function applySlideCam(){const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;const c=Object.assign({},camBase);if(m){if(m.shape)c.camShape=m.shape;if(m.corner)c.corner=m.corner;if(m.size!=null)c.camSize=Math.min(0.42,Math.max(0.14,m.size));if(m.full!=null)c.camFull=m.full;if(m.zoom!=null)c.camZoom=Math.min(2.5,Math.max(1,m.zoom));if(m.on===false)c.camHide=true;else if(m.on===true)c.camHide=false;}setCam(c);}
+function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;if(st.followMeta||!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
+function slideCam(){applySlideCam();camHint();}
+async function saveCamToScript(){
+  if(!CURLESSON||!CURLESSON.scriptHandle){alert("Нет доступа к 03-script.md урока.");return;}
+  const s=SLIDES[st.i], sid=s&&s.id;
+  if(!sid){alert("У слайда нет id — meta не пишется.");return;}
+  const toks=[];
+  if(!st.camOn || st.camHide) toks.push("off");
+  else if(st.camFull){toks.push("full: on");if((st.camZoom||1)>1.01)toks.push("zoom: "+(st.camZoom||1).toFixed(1));}
+  else{toks.push("type: "+(st.camShape==="circle"?"round":"rect"));toks.push("position: "+(CAMSEQ.indexOf(st.corner)+1));toks.push("size: "+Math.round(st.camSize*100));if((st.camZoom||1)>1.01)toks.push("zoom: "+(st.camZoom||1).toFixed(1));}
+  const metaLine="<!-- meta:camera "+toks.join(", ")+" -->";
+  try{
+    const text=await (await CURLESSON.scriptHandle.getFile()).text();
+    const lines=text.split(/\r?\n/);
+    let hdr=-1;
+    if(sid==="титул"){for(let i=0;i<lines.length;i++){if(/^##\s+Титульн/i.test(lines[i])){hdr=i;break;}}}
+    else{for(let i=0;i<lines.length;i++){const m=lines[i].match(/^###\s+Слайд\s+([0-9.]+)/);if(m&&m[1]===sid){hdr=i;break;}}}
+    if(hdr<0){alert("Не нашёл заголовок слайда в скрипте — meta не записана.");return;}
+    let metaIdx=-1;
+    for(let i=hdr+1;i<lines.length;i++){if(/meta:camera/i.test(lines[i])){metaIdx=i;break;}if(/^###\s/.test(lines[i])||/^##\s/.test(lines[i])||lines[i].trim()==="---")break;}
+    if(metaIdx>=0){lines[metaIdx]=metaLine;}else{const ins=[metaLine];if(lines.length>hdr+1&&lines[hdr+1].trim()!=="")ins.push("");lines.splice(hdr+1,0,...ins);}
+    const w=await CURLESSON.scriptHandle.createWritable();await w.write(lines.join("\n"));await w.close();
+    s.cam=parseCamMeta(metaLine);
+    flashBtn($("#metasavebtn"));
+  }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
+}
+
+const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:1.0,promptH:0.4,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",followMeta:false};
+const SET_KEYS=Object.keys(DEFAULTS);
+function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;$("#resbtn").textContent=st.res+"p";$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;const mt=$("#metabtn");if(mt)mt.classList.toggle("active",st.followMeta);}
+function flashBtn(b){if(!b)return;b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),700);}
+function saveSettings(){const o={};for(const k of SET_KEYS)o[k]=st[k];save("preset",o);flashBtn($("#savebtn"));}
+function resetSettings(){const pr=LS("preset",null);for(const k of SET_KEYS){const v=(pr&&pr[k]!==undefined&&pr[k]!==null)?pr[k]:DEFAULTS[k];st[k]=v;save(k,st[k]);}applyAllControls();flashBtn($("#resetbtn"));}
+
+function lineH(){return st.font*1.5;}
+function contentH(){return (promptInner?promptInner.offsetHeight:0)+PROMPT_PAD*2;}
+function positionRead(){if(!readline)return;const lh=lineH(),ch=prompter.clientHeight,maxS=Math.max(0,contentH()-ch);const anchor=Math.min(Math.max(ch*0.45,lh),Math.max(lh,ch-lh*1.4));const sTop=Math.min(Math.max(readPos-anchor,0),maxS);prompter.scrollTop=sTop;readline.style.height=(lh*3)+"px";readline.style.top=(readPos-lh)+"px";}
+let last=0;
+function loop(ts){
+  const dt=last?(ts-last)/1000:0; last=ts;
+  if(st.playing&&!prompter.classList.contains("hidden")){ readPos+=st.speed*dt; const endPos=contentH()-PROMPT_PAD-lineH(); if(readPos>=endPos){readPos=Math.max(PROMPT_PAD,endPos);st.playing=false;syncPlay();maybeAdv();}else if(st.speed>0&&(endPos-readPos)/st.speed<=3){maybeAdv();} positionRead(); }
+  if(analyser){ analyser.getByteTimeDomainData(vuData); let pk=0; for(let k=0;k<vuData.length;k++){const v=Math.abs(vuData[k]-128);if(v>pk)pk=v;} const vb=$("#vubar"); if(vb) vb.style.width=Math.min(100,pk*100/80).toFixed(0)+"%"; }
+  if(drawing) drawFrame();
+  drawLaserLive();
+  requestAnimationFrame(loop);
+}
+function syncPlay(){const g=st.playing?"⏸":"▶";$("#play").textContent=g;const mp=$("#m_play");if(mp)mp.textContent=g;syncScrollCtl();}
+function placeScrollCtl(){const sc=$("#scrollctl");if(!sc)return null;if(prompter.classList.contains("hidden")){sc.style.display="none";return null;}const r=prompter.getBoundingClientRect(),vh=window.innerHeight;sc.style.left=(r.right-62)+"px";sc.style.top=((vh-r.bottom)>=r.top?(r.bottom+8):(r.top-58))+"px";sc.textContent=st.playing?"⏸":"▶";return sc;}
+function syncScrollCtl(){const sc=placeScrollCtl();if(!sc)return;clearTimeout(scrollHideTimer);sc.style.display=st.playing?"none":"flex";}
+function showScrollCtl(){const sc=placeScrollCtl();if(!sc)return;sc.style.display="flex";clearTimeout(scrollHideTimer);if(st.playing)scrollHideTimer=setTimeout(()=>{sc.style.display="none";},2800);}
+function nudgePrompt(d){if(prompter.classList.contains("hidden"))return;const endPos=contentH()-PROMPT_PAD-lineH();readTarget=Math.max(PROMPT_PAD,Math.min(endPos,(readTarget==null?readPos:readTarget)+d));if(readTarget>=endPos-0.5)maybeAdv();else{advArmed=true;cancelAdv();}showScrollCtl();cancelAnimationFrame(scrollAnim);const step=()=>{const diff=readTarget-readPos;if(Math.abs(diff)<0.5){readPos=readTarget;readTarget=null;positionRead();return;}readPos+=diff*0.25;positionRead();scrollAnim=requestAnimationFrame(step);};step();}
+function togglePlay(){clearTimeout(autoTimer);const adv=$("#advcount"),advOn=adv&&adv.style.display==="flex";cancelAdv();if(advOn){st.playing=false;advArmed=true;syncPlay();return;}st.playing=!st.playing;advArmed=true;syncPlay();}
+function cancelAdv(){clearTimeout(advTimer);const el=$("#advcount");if(el)el.style.display="none";}
+function placeAdv(){const el=$("#advcount");if(!el||prompter.classList.contains("hidden"))return null;const r=prompter.getBoundingClientRect(),vh=window.innerHeight;el.style.left=(r.left+14)+"px";el.style.top=((vh-r.bottom)>=r.top?(r.bottom+8):(r.top-68))+"px";return el;}
+function maybeAdv(){const s=SLIDES[st.i];if(st.autoAdvance&&advArmed&&s&&!s.title&&s.words>0&&st.i<SLIDES.length-1&&!prompter.classList.contains("hidden")){advArmed=false;startAdvCountdown();}}
+function startAdvCountdown(){cancelAdv();const chain=st.playing;let k=5;const upd=()=>{const el=placeAdv();if(el){el.textContent=k;el.style.display="flex";}};upd();const tick=()=>{k--;if(k<=0){const e2=$("#advcount");if(e2)e2.style.display="none";if(st.i<SLIDES.length-1){advChaining=chain;showSlide(st.i+1);advChaining=false;}return;}upd();advTimer=setTimeout(tick,1000);};advTimer=setTimeout(tick,1000);}
+
+function resumeAudio(){try{if(audioCtx&&audioCtx.state==="suspended")audioCtx.resume();}catch(e){}}
+function setupVU(stream){try{if(!stream.getAudioTracks().length)return;audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const src=audioCtx.createMediaStreamSource(stream);analyser=audioCtx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=0.6;vuData=new Uint8Array(analyser.fftSize);src.connect(analyser);}catch(e){}}
+async function ensureAudio(){resumeAudio();if(micTrack&&micTrack.readyState==="live")return micTrack;const get=u=>navigator.mediaDevices.getUserMedia({audio:Object.assign({echoCancellation:false,noiseSuppression:true,autoGainControl:true},(u&&st.micDeviceId)?{deviceId:{exact:st.micDeviceId}}:{})});try{let a;try{a=await get(true);}catch(e){if((e.name==="OverconstrainedError"||e.name==="NotFoundError")&&st.micDeviceId){st.micDeviceId="";save("micDeviceId","");a=await get(false);}else throw e;}micTrack=a.getAudioTracks()[0]||null;if(micTrack)setupVU(a);populateDevices();return micTrack;}catch(e){return null;}}
+function camMicError(e){const n=(e&&e.name)||"Error";const h={NotAllowedError:"Доступ запрещён. Проверь: 1) значок камеры в адресной строке браузера — «Разрешить»; 2) macOS: Системные настройки — Конфиденциальность и безопасность — Камера и Микрофон — включи свой браузер и перезапусти его.",NotFoundError:"Камера или микрофон не найдены — проверь, что устройство подключено.",NotReadableError:"Устройство занято другим приложением (Zoom, FaceTime, OBS...). Закрой их и попробуй снова.",OverconstrainedError:"Сохранённое устройство недоступно на этой машине. Я сбросил выбор на «по умолчанию» — нажми «камеру» ещё раз.",SecurityError:"Нужен http://localhost или https. Открой студию через studio-launch.command (localhost:8000)."};return "Камера/микрофон недоступны ["+n+"].\n"+(h[n]||(e&&e.message)||"Неизвестная ошибка.");}
+async function startCam(){const build=()=>({video:Object.assign({width:{ideal:1920},height:{ideal:1080}},st.camDeviceId?{deviceId:{exact:st.camDeviceId}}:{}),audio:Object.assign({echoCancellation:false,noiseSuppression:true,autoGainControl:true},st.micDeviceId?{deviceId:{exact:st.micDeviceId}}:{})});const acquire=async()=>{try{return await navigator.mediaDevices.getUserMedia(build());}catch(e){if((e.name==="OverconstrainedError"||e.name==="NotFoundError")&&(st.camDeviceId||st.micDeviceId)){st.camDeviceId="";st.micDeviceId="";save("camDeviceId","");save("micDeviceId","");return await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080}},audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true}});}throw e;}};try{mediaStream=await acquire();cam.srcObject=mediaStream;await cam.play();const at=mediaStream.getAudioTracks()[0];if(at){micTrack=at;setupVU(mediaStream);}resumeAudio();st.camOn=true;applyCam();populateDevices();}catch(e){alert(camMicError(e));}}
+function stopCam(){if(mediaStream){mediaStream.getVideoTracks().forEach(t=>t.stop());}st.camOn=false;applyCam();}
+function fillSel(sel,devs,cur){if(!sel)return;sel.innerHTML="";const d=document.createElement("option");d.value="";d.textContent="по умолчанию";sel.appendChild(d);devs.forEach((dev,i)=>{const o=document.createElement("option");o.value=dev.deviceId;o.textContent=dev.label||("устройство "+(i+1));sel.appendChild(o);});sel.value=cur||"";}
+async function populateDevices(){try{const devs=await navigator.mediaDevices.enumerateDevices();fillSel($("#camsel"),devs.filter(d=>d.kind==="videoinput"),st.camDeviceId);fillSel($("#micsel"),devs.filter(d=>d.kind==="audioinput"),st.micDeviceId);}catch(e){}}
+
+function fitRect(iw,ih,cw,ch){const r=Math.min(cw/iw,ch/ih);const w=iw*r,h=ih*r;return{x:(cw-w)/2,y:(ch-h)/2,w,h};}
+function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+function drawCamInto(ctx,x,y,w,h,rad,border,circle){
+  const vw=cam.videoWidth, vh=cam.videoHeight, vr=vw/vh, br=w/h; let sw0,sh0;
+  if(vr>br){sh0=vh;sw0=sh0*br;} else {sw0=vw;sh0=sw0/br;}
+  const z=st.camZoom||1, sw=sw0/z, sh=sh0/z, fx=((st.camPanX||0)+1)/2, fy=((st.camPanY||0)+1)/2;
+  const sx=(vw-sw0)/2+fx*(sw0-sw), sy=(vh-sh0)/2+fy*(sh0-sh);
+  const pathFn=()=>{if(circle){ctx.beginPath();ctx.arc(x+w/2,y+h/2,Math.min(w,h)/2,0,Math.PI*2);}else if(rad>0)roundRect(ctx,x,y,w,h,rad);else{ctx.beginPath();ctx.rect(x,y,w,h);}};
+  ctx.save(); pathFn(); ctx.clip();
+  if(st.mirror){ctx.translate(x+w,y);ctx.scale(-1,1);ctx.drawImage(cam,sx,sy,sw,sh,0,0,w,h);} else ctx.drawImage(cam,sx,sy,sw,sh,x,y,w,h);
+  ctx.restore();
+  if(border>0){ctx.save();pathFn();ctx.lineWidth=border;ctx.strokeStyle="rgba(255,255,255,.9)";ctx.stroke();ctx.restore();}
+}
+let laserOn=false, laserPts=[], laserHead=null, lastNorm=null, laserLastPush=0, laserMoveT=0; const LASER_MS=650, LASER_IDLE=3000, LASER_FADE=400;
+function slideNorm(cx,cy){const el=$("#slideImg");if(!el||!curImg||!curImg.naturalWidth)return{inside:false};const b=el.getBoundingClientRect();if(!b.width||!b.height)return{inside:false};const ia=curImg.naturalWidth/curImg.naturalHeight,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}const nx=(cx-b.left-ox)/dw,ny=(cy-b.top-oy)/dh;return{nx,ny,inside:nx>=0&&nx<=1&&ny>=0&&ny<=1};}
+function slideScreenRect(){const el=$("#slideImg");if(!el||!curImg||!curImg.naturalWidth)return null;const b=el.getBoundingClientRect();if(!b.width||!b.height)return null;const ia=curImg.naturalWidth/curImg.naturalHeight,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}return{x:b.left+ox,y:b.top+oy,w:dw,h:dh};}
+function setLaser(on){laserOn=on;const b=$("#laserbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("laser",on);laserPts.length=0;laserHead=(on&&lastNorm&&lastNorm.inside)?{nx:lastNorm.nx,ny:lastNorm.ny}:null;laserMoveT=performance.now();const c=$("#laserlive");if(c){c.style.display=on?"block":"none";if(!on){const g=c.getContext("2d");if(g)g.clearRect(0,0,c.width,c.height);}}}
+function toggleLaser(){setLaser(!laserOn);}
+function paintLaser(g,map,px){const now=performance.now();while(laserPts.length&&now-laserPts[0].t>LASER_MS)laserPts.shift();g.save();g.lineCap="round";g.lineJoin="round";for(let i=1;i<laserPts.length;i++){const p0=map(laserPts[i-1]),pc=laserPts[i],p1=map(pc),a=Math.max(0,1-(now-pc.t)/LASER_MS);if(a<=0)continue;g.strokeStyle="rgba(255,45,45,"+(a*0.5).toFixed(3)+")";g.lineWidth=Math.max(1.5,6*a)*px;g.beginPath();g.moveTo(p0.x,p0.y);g.lineTo(p1.x,p1.y);g.stroke();}const idle=now-laserMoveT,ha=idle>=LASER_IDLE?0:(idle>LASER_IDLE-LASER_FADE?(LASER_IDLE-idle)/LASER_FADE:1);if(laserHead&&ha>0){g.globalAlpha=ha;const h=map(laserHead),R=6.5*px,gr=g.createRadialGradient(h.x,h.y,0,h.x,h.y,R*2);gr.addColorStop(0,"rgba(255,120,120,.95)");gr.addColorStop(.35,"rgba(255,30,30,.92)");gr.addColorStop(1,"rgba(255,0,0,0)");g.fillStyle=gr;g.beginPath();g.arc(h.x,h.y,R*2,0,6.2832);g.fill();g.fillStyle="rgba(255,235,235,.95)";g.beginPath();g.arc(h.x,h.y,R*0.45,0,6.2832);g.fill();}g.restore();}
+function drawLaser(ctx,cw,ch){if(!curImg||!curImg.naturalWidth)return;const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);paintLaser(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
+function drawLaserLive(){if(!laserOn)return;const c=$("#laserlive");if(!c)return;const dpr=window.devicePixelRatio||1,W=window.innerWidth,H=window.innerHeight;if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);c.style.width=W+"px";c.style.height=H+"px";}const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);const rect=slideScreenRect();if(!rect)return;paintLaser(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),Math.max(0.9,rect.w/1920));}
+function drawFrame(){
+  const cw=canvas.width,ch=canvas.height,ctx=canvas.getContext("2d");
+  ctx.fillStyle="#0b0c0f";ctx.fillRect(0,0,cw,ch);
+  if(st.camFull&&st.camOn&&!st.camHide&&cam.videoWidth){
+    drawCamInto(ctx,0,0,cw,ch,0,0);
+  } else {
+    if(curImg&&curImg.complete&&curImg.naturalWidth){const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);ctx.drawImage(curImg,r.x,r.y,r.w,r.h);}
+    if(st.camOn&&!st.camHide&&cam.videoWidth){
+      const circle=st.camShape==="circle", pw=cw*st.camSize, ph=circle?pw:pw*9/16, mx=cw*0.03333, my=ch*0.05185;
+      const _p=CAMPOS[st.corner]||CAMPOS.br; let x=_p[0]==="r"?cw-pw-mx:_p[0]==="c"?(cw-pw)/2:mx, y=_p[1]==="b"?ch-ph-my:_p[1]==="m"?(ch-ph)/2:my, rad=cw*0.00833;
+      drawCamInto(ctx,x,y,pw,ph,rad,Math.max(2,cw*0.0022),circle);
+    }
+  }
+  if(st.burnIn) drawBurnIn(ctx,cw,ch);
+  if(laserOn && !st.camFull) drawLaser(ctx,cw,ch);
+}
+function drawBurnIn(ctx,cw,ch){
+  const s=SLIDES[st.i]; if(!s.plain) return;
+  const fs=Math.round(ch*0.034),lh=fs*1.4,pad=cw*0.05,maxw=cw-pad*2;
+  ctx.font=`600 ${fs}px -apple-system,Segoe UI,Roboto,sans-serif`;
+  const words=s.plain.replace(/\n+/g," ").split(" ");let lines=[],cl="";
+  for(const w of words){const t=cl?cl+" "+w:w;if(ctx.measureText(t).width>maxw){lines.push(cl);cl=w;}else cl=t;}
+  if(cl)lines.push(cl);
+  const bandH=Math.min(ch*0.42,lines.length*lh+pad);
+  const frac=contentH()>prompter.clientHeight?prompter.scrollTop/(contentH()-prompter.clientHeight):0;
+  const visN=Math.max(1,Math.floor((bandH-pad)/lh)), start=Math.round(frac*Math.max(0,lines.length-visN));
+  ctx.fillStyle="rgba(8,9,12,.74)";ctx.fillRect(0,ch-bandH,cw,bandH);
+  ctx.fillStyle="#fff";ctx.textBaseline="top";
+  for(let k=0;k<visN&&start+k<lines.length;k++) ctx.fillText(lines[start+k],pad,ch-bandH+pad*0.5+k*lh);
+}
+function pickMime(){for(const m of ["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"])if(MediaRecorder.isTypeSupported(m))return m;return "";}
+function tcFmt(s){const m=Math.floor(s/60),x=s%60;return (m<10?"0":"")+m+":"+(x<10?"0":"")+x;}
+function addMarker(type){if(!recording)return;markers.push({t:recSecs(),slide:st.i+1,type});}
+function flashCut(){const b=$("#cutbtn");if(b){b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),500);}const mb=$("#m_cut");if(mb){mb.classList.add("ok");setTimeout(()=>mb.classList.remove("ok"),500);}}
+function markCut(){if(!recording)return;addMarker("cut");flashCut();}
+function runCountdown(n){return new Promise(res=>{const el=$("#countdown");if(!el){res();return;}let k=n;el.style.display="flex";el.textContent=k;const tick=()=>{k--;if(k<=0){el.style.display="none";res();}else{el.textContent=k;setTimeout(tick,1000);}};setTimeout(tick,1000);});}
+async function startRec(){
+  if(recording||starting)return; starting=true;
+  try{
+    const aTrack=await ensureAudio();
+    const [cw,ch]=st.res==="720"?[1280,720]:[1920,1080];
+    canvas.width=cw;canvas.height=ch;drawing=true;drawFrame();
+    const tracks=canvas.captureStream(30).getVideoTracks();
+    const hasAudio=aTrack&&aTrack.readyState==="live"; if(hasAudio)tracks.push(aTrack);
+    const mime=pickMime(), opts=mime?{mimeType:mime,videoBitsPerSecond:6000000,audioBitsPerSecond:128000}:{};
+    rec=new MediaRecorder(new MediaStream(tracks),opts);
+    recName="lecture-"+(function(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"-"+p(d.getMinutes())+"-"+p(d.getSeconds());})(new Date());
+    recChunks=[]; recWritable=null; markers=[];
+    try{ if(CURLESSON&&CURLESSON.dirHandle){ const fh=await CURLESSON.dirHandle.getFileHandle(recName+".webm",{create:true}); recWritable=await fh.createWritable(); } }catch(e){ recWritable=null; }
+    rec.ondataavailable=e=>{ if(!e.data.size)return; if(recWritable){ recWritable.write(e.data).catch(()=>{}); } else { recChunks.push(e.data); } };
+    rec.onstop=async()=>{ const w=recWritable; recWritable=null; if(recDiscard){ recDiscard=false; if(w){try{await w.abort();}catch(e){}} return; } if(w){ try{await w.close();}catch(e){} } else { const blob=new Blob(recChunks,{type:"video/webm"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=recName+".webm"; a.click(); } writeMarkers(); };
+    const mw=$("#micwarn"); if(mw) mw.style.display=hasAudio?"none":"inline";
+    await runCountdown(3);
+    rec.start(1000);recording=true;recPaused=false;recAccum=0;recLast=Date.now();slideAccum=0;slideLast=Date.now();updateRecUI();
+  } finally { starting=false; }
+}
+async function writeMarkers(){
+  if(!markers.length) return;
+  const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда"};
+  const lines=["Запись "+recName+".webm","Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
+  for(const m of markers) lines.push(tcFmt(m.t)+"  "+(lab[m.type]||m.type)+"  — слайд "+m.slide);
+  const text=lines.join("\n");
+  try{ if(CURLESSON&&CURLESSON.dirHandle){ const fh=await CURLESSON.dirHandle.getFileHandle(recName+".markers.txt",{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return; } }catch(e){}
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([text],{type:"text/plain"})); a.download=recName+".markers.txt"; a.click();
+}
+function stopRec(){if(rec&&recording){rec.stop();}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
+function stopRecDiscard(){if(rec&&recording){recDiscard=true;rec.stop();}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
+function restartShow(){if(recording&&!confirm("Идёт запись. Начать презентацию сначала? Текущая запись будет отброшена."))return;if(recording)stopRecDiscard();recAccum=0;showSlide(0);}
+function togglePause(){if(!recording||!rec)return;if(recPaused){try{rec.resume();}catch(e){}recPaused=false;st.playing=prePausePlaying;syncPlay();}else{try{rec.pause();}catch(e){}recPaused=true;prePausePlaying=st.playing;st.playing=false;cancelAdv();advArmed=true;syncPlay();addMarker("pause");}updateRecUI();}
+function updateRecUI(){
+  const on=recording,p=recPaused,show=(id,v)=>{const e=$(id);if(e)e.style.display=v?"":"none";};
+  recDot.classList.toggle("on",on&&!p);
+  recDot.style.background=on?(p?"#e0a030":""):"";
+  show("#recbtn",!on);show("#pausebtn",on);show("#stopbtn",on);
+  show("#m_rec",!on);show("#m_pause",on);show("#m_stop",on);
+  const t=p?"▶":"⏸",pb=$("#pausebtn"),mp=$("#m_pause");if(pb)pb.textContent=t;if(mp)mp.textContent=t;
+  const td=$("#tdot");if(td)td.style.background=on?(p?"#e0a030":"#ff3b30"):"#555";
+}
+function recSecs(){return recording?Math.floor(recAccum/1000):0;}
+function hidePanel(){$("#bar").style.display="none";$("#minibar").style.display="flex";}
+function showPanel(){$("#minibar").style.display="none";$("#bar").style.display="flex";}
+function toggleCam(){st.camOn?stopCam():startCam();}
+function toggleCamFull(){st.camFull=!st.camFull;save("camFull",st.camFull);snapshotCamBase();if(st.camFull&&!st.camOn)startCam();else applyCam();}
+function fmt(s){const m=Math.floor(s/60),x=s%60;return `${m}:${x<10?"0":""}${x}`;}
+setInterval(()=>{const now=Date.now();const onTitle=!!(SLIDES[st.i]&&SLIDES[st.i].title);if(recording&&!recPaused)recAccum+=now-recLast;recLast=now;if(recording&&!recPaused&&!onTitle)slideAccum+=now-slideLast;slideLast=now;const rs=recSecs(),t=fmt(rs);recTime.textContent=t;const tt=$("#totTime");if(tt){tt.textContent=t;tt.style.color=rs>=2700?"#ff5a4d":rs>=2100?"#ffab2e":rs>=1500?"#37d27a":"#f0f1f3";}const sl=$("#slTime");if(sl){const ss=recording?Math.floor(slideAccum/1000):0;sl.textContent=fmt(ss);sl.style.color=ss>=120?"#ff5a4d":ss>=60?"#37d27a":"#f0f1f3";}},500);
+
+let wl=null;async function keepAwake(){try{wl=await navigator.wakeLock.request("screen");}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")keepAwake();});
+window.addEventListener("resize",()=>{syncSpeed();applySpeed();syncScrollCtl();});
+window.addEventListener("beforeunload",e=>{if(recording){e.preventDefault();e.returnValue="";}});
+
+function bindStudio(){
+  $("#prev").onclick=()=>showSlide(st.i-1);
+  $("#next").onclick=()=>showSlide(st.i+1);
+  $("#play").onclick=togglePlay;
+  $("#autobtn").onclick=()=>{st.autoScroll=!st.autoScroll;save("autoScroll",st.autoScroll);$("#autobtn").classList.toggle("active",st.autoScroll);};
+  $("#autoadvbtn").onclick=()=>{st.autoAdvance=!st.autoAdvance;save("autoAdvance",st.autoAdvance);$("#autoadvbtn").classList.toggle("active",st.autoAdvance);};
+  prompter.onclick=togglePlay;
+  $("#m_play").onclick=togglePlay;
+  prompter.addEventListener("wheel",e=>{e.preventDefault();const endPos=contentH()-PROMPT_PAD-lineH();readPos=Math.max(PROMPT_PAD,Math.min(endPos,readPos+e.deltaY*0.5));if(readPos>=endPos-0.5)maybeAdv();else{advArmed=true;cancelAdv();}positionRead();showScrollCtl();},{passive:false});
+  $("#scrollctl").onclick=()=>{togglePlay();showScrollCtl();};
+  $("#scrollctl").onmouseenter=()=>clearTimeout(scrollHideTimer);
+  $("#scrollctl").onmouseleave=()=>{if(!st.playing)return;clearTimeout(scrollHideTimer);scrollHideTimer=setTimeout(()=>{const s=$("#scrollctl");if(s)s.style.display="none";},1500);};
+  $("#spdm").onclick=()=>{st.speed=Math.max(1,st.speed-1);st.tempo=Math.round(speedToTempo(st.speed));save("tempo",st.tempo);applySpeed();};
+  $("#spdp").onclick=()=>{st.speed=Math.min(60,st.speed+1);st.tempo=Math.round(speedToTempo(st.speed));save("tempo",st.tempo);applySpeed();};
+  $("#tmpm").onclick=()=>{st.tempo=Math.max(60,(Math.ceil(st.tempo/5)-1)*5);syncSpeed();save("tempo",st.tempo);applySpeed();};
+  $("#tmpp").onclick=()=>{st.tempo=Math.min(400,(Math.floor(st.tempo/5)+1)*5);syncSpeed();save("tempo",st.tempo);applySpeed();};
+  $("#fontm").onclick=()=>{st.font=Math.max(18,st.font-2);save("font",st.font);applyFont();};
+  $("#fontp").onclick=()=>{st.font+=2;save("font",st.font);applyFont();};
+  $("#cambtn").onclick=toggleCam;
+  $("#cornerbtn").onclick=()=>{const i=CAMSEQ.indexOf(st.corner);st.corner=CAMSEQ[(i<0?0:i+1)%CAMSEQ.length];save("corner",st.corner);snapshotCamBase();applyCam();};
+  $("#mirrorbtn").onclick=()=>{st.mirror=!st.mirror;save("mirror",st.mirror);applyCam();};
+  $("#camsz").oninput=e=>{st.camSize=+e.target.value;save("camSize",st.camSize);snapshotCamBase();applyCam();};
+  $("#camzoom").oninput=e=>{st.camZoom=+e.target.value;save("camZoom",st.camZoom);snapshotCamBase();applyCam();};
+  $("#campanx").oninput=e=>{st.camPanX=+e.target.value;save("camPanX",st.camPanX);applyCam();};
+  $("#campany").oninput=e=>{st.camPanY=+e.target.value;save("camPanY",st.camPanY);applyCam();};
+  $("#thumbop").oninput=e=>{st.thumbOpacity=+e.target.value;save("thumbOpacity",st.thumbOpacity);applyCam();};
+  $("#camsel").onchange=e=>{st.camDeviceId=e.target.value;save("camDeviceId",st.camDeviceId);if(st.camOn&&!recording){stopCam();startCam();}};
+  $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);if(!recording){if(micTrack){try{micTrack.stop();}catch(e){}micTrack=null;}ensureAudio();}};
+  $("#recbtn").onclick=startRec;$("#pausebtn").onclick=togglePause;$("#stopbtn").onclick=stopRec;
+  $("#cutbtn").onclick=markCut;$("#m_cut").onclick=markCut;
+  $("#resbtn").onclick=()=>{st.res=st.res==="1080"?"720":"1080";save("res",st.res);$("#resbtn").textContent=st.res+"p";};
+  $("#burnbtn").onclick=()=>{st.burnIn=!st.burnIn;save("burnIn",st.burnIn);$("#burnbtn").classList.toggle("active",st.burnIn);};
+  $("#posbtn").onclick=()=>{st.promptPos=st.promptPos==="top"?"bottom":"top";save("promptPos",st.promptPos);applyPromptBox();};
+  $("#opac").oninput=e=>{st.opacity=+e.target.value;save("opacity",st.opacity);applyPromptBox();};
+  $("#suflcap").onclick=()=>{const h=prompter.classList.toggle("hidden");$("#suflcap").classList.toggle("off",h);syncScrollCtl();};
+  $("#pwm").onclick=()=>{st.promptW=Math.max(0.28,+(st.promptW-0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
+  $("#pwp").onclick=()=>{st.promptW=Math.min(1,+(st.promptW+0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
+  $("#phm").onclick=()=>{st.promptH=Math.max(0.06,+(st.promptH-0.04).toFixed(2));save("promptH",st.promptH);applyPromptBox();};
+  $("#php").onclick=()=>{st.promptH=Math.min(0.78,+(st.promptH+0.04).toFixed(2));save("promptH",st.promptH);applyPromptBox();};
+  $("#hidebar").onclick=hidePanel;
+  $("#m_expand").onclick=showPanel;
+  $("#m_prev").onclick=()=>showSlide(st.i-1);
+  $("#m_next").onclick=()=>showSlide(st.i+1);
+  $("#m_rec").onclick=startRec;$("#m_pause").onclick=togglePause;$("#m_stop").onclick=stopRec;
+  $("#m_cam").onclick=toggleCam;
+  $("#camfullbtn").onclick=toggleCamFull;
+  $("#camshape").onclick=()=>{st.camShape=st.camShape==="circle"?"rect":"circle";save("camShape",st.camShape);snapshotCamBase();applyCam();};
+  $("#metabtn").onclick=()=>{resetCamDefault();flashBtn($("#metabtn"));camHint();};
+  $("#laserbtn").onclick=toggleLaser;
+  window.addEventListener("mousemove",e=>{const n=slideNorm(e.clientX,e.clientY);lastNorm=n;if(laserOn&&n.inside){laserHead={nx:n.nx,ny:n.ny};const t=performance.now();laserMoveT=t;if(t-laserLastPush>8){laserPts.push({nx:n.nx,ny:n.ny,t});laserLastPush=t;}}else laserHead=null;});
+  $("#metasavebtn").onclick=saveCamToScript;
+  $("#m_camfull").onclick=toggleCamFull;
+  $("#savebtn").onclick=saveSettings;
+  $("#resetbtn").onclick=resetSettings;
+  $("#back").onclick=()=>{ if(recording) stopRec(); $("#bar").style.display="none"; $("#timers").style.display="none"; $("#slideid").style.display="none"; $("#setup").style.display="flex"; };
+  $("#restartbtn").onclick=restartShow;
+  $("#full").onclick=()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();};
+  document.addEventListener("keydown",e=>{
+    if($("#setup").style.display!=="none"||e.target.tagName==="INPUT"||e.target.tagName==="SELECT")return;
+    if(e.key==="ArrowRight"||e.key==="PageDown"){showSlide(st.i+1);e.preventDefault();}
+    else if(e.key==="ArrowLeft"||e.key==="PageUp"){showSlide(st.i-1);e.preventDefault();}
+    else if(e.key===" "){togglePlay();e.preventDefault();}
+    else if(e.key==="ArrowUp"){if(e.shiftKey){st.speed=Math.min(60,st.speed+1);st.tempo=Math.round(speedToTempo(st.speed));save("tempo",st.tempo);applySpeed();}else nudgePrompt(-lineH()*1.5);e.preventDefault();}
+    else if(e.key==="ArrowDown"){if(e.shiftKey){st.speed=Math.max(1,st.speed-1);st.tempo=Math.round(speedToTempo(st.speed));save("tempo",st.tempo);applySpeed();}else nudgePrompt(lineH()*1.5);e.preventDefault();}
+    else if(e.key.toLowerCase()==="r"){recording?stopRec():startRec();}
+    else if(e.key.toLowerCase()==="f"){$("#full").click();}
+    else if(e.key.toLowerCase()==="l"){toggleLaser();}
+  });
+}
+function startStudio(){
+  applyAllControls();updateRecUI();$("#timers").style.display="flex";populateDevices();
+  snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
+  if(!started){ started=true; bindStudio(); requestAnimationFrame(loop); }
+}
+
+bindSetup();
+</script>
+</body></html>
