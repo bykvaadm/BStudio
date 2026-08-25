@@ -53,6 +53,10 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 #camhint{position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:13;display:none;background:rgba(40,34,12,.92);border:1px solid var(--acc);color:#ffe9a8;padding:7px 14px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none;max-width:80vw;text-align:center;backdrop-filter:blur(4px);}
 #laserlive{position:fixed;inset:0;width:100vw;height:100vh;z-index:14;display:none;pointer-events:none;}
 #stage.laser{cursor:none;}
+#stage.ink{cursor:crosshair;}
+.inkswatch{display:inline-flex;gap:5px;align-items:center;vertical-align:middle;}
+.inkswatch button{width:17px;height:17px;min-width:0;min-height:0;border-radius:50%;padding:0;border:1px solid rgba(255,255,255,.3);}
+.inkswatch button.swon{box-shadow:0 0 0 2px #fff;}
 .grp select{background:#23252e;color:#e8e9ec;border:1px solid #2a2e39;border-radius:8px;padding:6px;font-size:12px;max-width:160px;min-height:36px;cursor:pointer;}
 #cutbtn{background:#7c3a12;color:#ffcaa0;font-weight:600;}
 #minibar #m_cut{background:#7c3a12;color:#ffcaa0;}
@@ -111,9 +115,9 @@ input[type=range]{width:90px;}
 
 <div id="setup"><div class="card">
   <h1>🎬 BStudio</h1>
-  <p class="sub">Укажи корневую папку курса — выберешь урок и источник слайдов. Студия собирает <b>все</b> найденные варианты: и <code>deck_frames/</code>, и каждый PDF рядом с уроком. Речитатив — из <code>03-script.md</code>. Нужен Chrome.</p>
+  <p class="sub">Укажи папку курса — или просто любую папку с картинками. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
   <div id="restoreBox" style="display:none"></div>
-  <button id="pickCourse" class="big">📁 Выбрать папку курса</button>
+  <button id="pickCourse" class="big">📁 Выбрать папку</button>
   <div id="lessonBox" style="display:none">
     <label>Урок</label>
     <select id="lessonSel"></select>
@@ -178,6 +182,21 @@ input[type=range]{width:90px;}
      <span class="sld"><input id="campany" type="range" min="-1" max="1" step="0.05" title="сдвиг картинки по вертикали (с зумом)"><span class="scap">↕ сдвиг</span></span>
      <span class="vdiv"></span>
      <span class="sld"><input id="thumbop" type="range" min="0" max="1" step="0.05" title="Прозрачность миниатюры слайда в углу — видна только в режиме «камера на весь экран», чтобы видеть слайд, говоря в камеру. 0 — миниатюры нет, 1 — непрозрачная. В запись не попадает."><span class="scap">миниатюра</span></span></div>
+  <div class="grp" id="g-ink"><span class="cap">рисование</span>
+     <button id="inkbtn" title="режим рисования поверх слайда — штрихи пишутся в видео (клавиша D)">✏️ рисование</button>
+     <span class="vdiv"></span>
+     <button class="inktool" id="inktool-pen" data-tool="pen" title="перо">✏️</button>
+     <button class="inktool" id="inktool-marker" data-tool="marker" title="маркер">🖍</button>
+     <button class="inktool" id="inktool-line" data-tool="line" title="линия / стрелка — Shift выравнивает по 0/45/90°">↗</button>
+     <button class="inktool" id="inktool-eraser" data-tool="eraser" title="ластик — стирает штрих целиком">🩹</button>
+     <span class="vdiv"></span>
+     <button id="inkundo" title="отменить последний штрих (Ctrl/Cmd+Z)">↶</button>
+     <button id="inkclear" title="очистить рисунок на этом слайде">🧹</button>
+     <span class="vdiv"></span>
+     <span class="inkswatch" id="inkcolors"></span>
+     <span class="sld"><input id="inkw" type="range" min="1" max="16" step="1"><span class="scap">толщина</span></span>
+     <span class="vdiv"></span>
+     <button id="inkpersistbtn" title="что делать со штрихами при смене слайда"></button></div>
   <div class="grp rec" id="g-rec"><span class="cap">запись</span><span id="recDot"></span>
      <button id="recbtn">⏺ Запись</button>
      <button id="pausebtn" style="display:none" title="пауза/продолжить">⏸</button>
@@ -190,7 +209,7 @@ input[type=range]{width:90px;}
      <span id="micwarn" title="нет звука!">⚠ нет звука</span>
      <select id="micsel" title="выбор микрофона"></select>
      <span class="vdiv"></span>
-     <button id="resbtn" title="разрешение">1080p</button>
+     <button id="resbtn" title="размер записи">1080p</button>
      <span class="vdiv"></span>
      <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
   </div>
@@ -248,8 +267,12 @@ function parseScript(md){
    папка перекрывала PDF, и до него дело не доходило. Теперь оба в списке.
    PPTX тоже попадает в список, но помечен как непригодный: браузерного движка
    для него нет, нужна конвертация (см. pptx-to-pdf.command). */
+// Картинки берём любые, какие браузер нарисует: чем и откуда они сделаны — не важно.
+const IMG_RE=/\.(png|jpe?g|webp|avif|gif|bmp)$/i;
+
 async function findDeckSources(dirHandle){
   const out = [];
+  const framed = new Set();   // папки, уже засчитанные как deck_frames — вторым проходом их не берём
 
   // deck_frames/ — в уроке или на уровень глубже. Считаем кадры: по числу сразу
   // видно, это полная дека или обложка на один слайд.
@@ -257,22 +280,40 @@ async function findDeckSources(dirHandle){
     for await (const [name,h] of dir.entries()){
       if(h.kind!=="directory" || name!=="deck_frames") continue;
       let n=0; for await (const [fn] of h.entries()) if(/^p-\d+\.png$/i.test(fn)) n++;
-      if(n) out.push({kind:"png", handle:h, name:(label?label+"/":"")+"deck_frames", count:n});
+      const path=(label?label+"/":"")+"deck_frames";
+      if(n){ out.push({kind:"png", handle:h, name:path, count:n, sub:label||"deck_frames"}); framed.add(path); }
     }
   };
   const filesIn = async (dir, label) => {
     for await (const [name,h] of dir.entries()){
       if(h.kind!=="file") continue;
-      if(/\.pdf$/i.test(name))  out.push({kind:"pdf",  file:h, name:(label?label+"/":"")+name});
-      if(/\.pptx$/i.test(name)) out.push({kind:"pptx", file:h, name:(label?label+"/":"")+name});
+      if(/\.pdf$/i.test(name))  out.push({kind:"pdf",  file:h, name:(label?label+"/":"")+name, sub:label||null});
+      if(/\.pptx$/i.test(name)) out.push({kind:"pptx", file:h, name:(label?label+"/":"")+name, sub:label||null});
     }
+  };
+  // Просто папка с картинками — тоже дека. Имена не обязаны быть p-NNN.png,
+  // порядок слайдов = натуральный порядок имён. Так открывается и то, что декой
+  // никогда не было: папка скриншотов, экспорт из Keynote, сканы, картинки урока.
+  const imagesIn = async (dir, label) => {
+    if(framed.has(label)) return;              // это deck_frames, уже посчитан кадрами
+    let n=0;
+    for await (const [name,h] of dir.entries()) if(h.kind==="file" && IMG_RE.test(name)) n++;
+    if(n) out.push({kind:"imgs", handle:dir, name:label||"картинки в папке урока", count:n, sub:label||null});
   };
 
   await framesIn(dirHandle, "");
   await filesIn(dirHandle, "");
   for await (const [name,h] of dirHandle.entries()){
-    if(h.kind==="directory" && name!=="node_modules" && name!=="assets" && name!=="deck_frames"){
+    if(h.kind==="directory" && !name.startsWith(".") && name!=="node_modules" && name!=="assets" && name!=="deck_frames"){
       try{ await framesIn(h, name); await filesIn(h, name); }catch(e){}
+    }
+  }
+  // Картинки — отдельным проходом, после кадров: к этому моменту известно, какие
+  // папки уже ушли как deck_frames, и одна и та же дека не задваивается.
+  await imagesIn(dirHandle, "");
+  for await (const [name,h] of dirHandle.entries()){
+    if(h.kind==="directory" && !name.startsWith(".") && name!=="node_modules" && name!=="assets"){
+      try{ await imagesIn(h, name); }catch(e){}
     }
   }
 
@@ -282,8 +323,10 @@ async function findDeckSources(dirHandle){
   // сайта, а не дека, и ставить её дефолтом означало бы, что запись начнётся с
   // одного слайда. Такие уезжают в конец списка, но из него не исчезают.
   const COVER = 5;                       // меньше этого — считаем обложкой
-  const rank = x => x.kind==="png" ? (x.count>=COVER ? 0 : 3)
-                  : x.kind==="pdf" ? 1 : 4;   // pptx последний: его не нарисовать
+  const rank = x => x.kind==="png"  ? (x.count>=COVER ? 0 : 3)
+                  : x.kind==="pdf"  ? 1
+                  : x.kind==="imgs" ? (x.count>=COVER ? 2 : 4)
+                  : 5;                        // pptx последний: его не нарисовать
   out.sort((a,b)=> rank(a)-rank(b)
                 || (b.count||0)-(a.count||0)
                 || a.name.localeCompare(b.name));
@@ -294,35 +337,61 @@ async function findDeckSources(dirHandle){
 function sourceLabel(src){
   if(src.kind==="png")  return `${src.name} — кадры, ${src.count} шт.`;
   if(src.kind==="pdf")  return `${src.name} — PDF`;
+  if(src.kind==="imgs") return `${src.name} — картинки, ${src.count} шт.`;
   return `${src.name} — PPTX, нужна конвертация`;
 }
 
+/* Урок — папка, где есть речитатив 03-script.md ИЛИ хоть что-нибудь рисуемое.
+   Речитатив необязателен: без него суфлёр пустой, а слайды, камера и запись
+   работают как обычно. Поэтому студии можно скормить и голую папку с
+   картинками — она откроется как урок без текста. */
 async function scanLessons(root){
-  const lessons=[];
+  const found=[];
   async function walk(dir,rel){
     let scriptHandle=null; const subs=[];
     for await (const [name,h] of dir.entries()){
       if(h.kind==="file" && name==="03-script.md") scriptHandle=h;
-      else if(h.kind==="directory" && name!=="node_modules" && name!=="assets" && name!=="deck_frames") subs.push([name,h]);
+      else if(h.kind==="directory" && !name.startsWith(".") && name!=="node_modules" && name!=="assets" && name!=="deck_frames") subs.push([name,h]);
     }
-    if(scriptHandle){
-      const sources=await findDeckSources(dir);
-      lessons.push({
+    const sources=await findDeckSources(dir);
+    const drawable=sources.some(s=>s.kind!=="pptx");
+    if(scriptHandle || drawable){
+      found.push({
         name: rel||"(корень)",
         scriptHandle,
         sources,
         dirHandle: dir,
         // PPTX виден в списке, но сам по себе урок готов, только если есть хоть
         // один источник, который студия умеет рисовать.
-        ready: sources.some(s=>s.kind!=="pptx"),
+        ready: drawable,
         hint: sources.some(s=>s.kind==="pptx") ? sources.find(s=>s.kind==="pptx").name : null
       });
     }
     for(const [name,h] of subs) await walk(h, rel?rel+"/"+name:name);
   }
   await walk(root,"");
-  lessons.sort((a,b)=>a.name.localeCompare(b.name));
-  return lessons;
+
+  /* Одна и та же дека видна с нескольких уровней сразу: findDeckSources смотрит
+     и на уровень глубже, поэтому папка урока и папка с картинками внутри неё
+     обе выглядят уроками. Разгребаем так:
+       1. папка, внутри которой лежит настоящий урок с речитативом, — это
+          контейнер (курс, модуль), а не урок;
+       2. папка без собственных слайдов, всё содержимое которой уже разошлось
+          по отдельным урокам, тоже не нужна;
+       3. папка внутри уже отобранного урока не нужна: её слайды видны в нём
+          вторым пунктом списка источников.
+     Уроки с речитативом не трогаем никогда — их набор такой же, как был. */
+  const inside=(a,b)=> b.name!==a.name && (a.name==="(корень)" || b.name.startsWith(a.name+"/"));
+  const keep=found.filter(l=>{
+    if(l.scriptHandle) return true;
+    if(found.some(o=>o.scriptHandle && inside(l,o))) return false;                       // 1
+    const own=(l.sources||[]).some(s=>!s.sub);
+    if(!own && found.some(o=>inside(l,o))) return false;                                 // 2
+    return true;
+  });
+  const out=keep.filter(l=> l.scriptHandle || !keep.some(o=>o!==l && inside(o,l)));       // 3
+  out.sort((a,b)=>a.name.localeCompare(b.name));
+  return out;
 }
 /* PDF → массив object-URL с картинками страниц.
 
@@ -391,9 +460,16 @@ function pdfWarningText(){
   return "Браузер отрисовал PDF с оговорками ("+PDF_WARNINGS.length+"). Сверьте цвета со слайдами перед записью.";
 }
 
+/* Размер «области съёмки»: по умолчанию 1920×1080, но если слайды другого
+   размера (скриншоты, вертикальные картинки, дека 4:3), кадр 16:9 добавит к ним
+   чёрные поля. Поэтому запоминаем размер самой большой картинки деки — режим
+   «по слайдам» снимает ровно в нём, и полей не остаётся. */
+let DECKSIZE={w:1920,h:1080};
+function imgSize(url){return new Promise(res=>{const im=new Image();im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});im.onerror=()=>res(null);im.src=url;});}
+
 async function loadLesson(lesson, src){
   src = src || (lesson.sources||[]).find(x=>x.kind!=="pptx");
-  if(!src) throw new Error("В уроке нет ни deck_frames/, ни PDF рядом с 03-script.md.");
+  if(!src) throw new Error("В этой папке нечего показывать: нет ни deck_frames/, ни PDF, ни картинок.");
   if(src.kind==="pptx") throw new Error(
     "Нашёл «"+src.name+"», но PPTX браузер не рисует. Сконвертируй в PDF одной командой:\n"+
     "soffice --headless --convert-to pdf \""+src.name+"\"\n"+
@@ -404,15 +480,31 @@ async function loadLesson(lesson, src){
     const msg=document.querySelector("#setupMsg");
     imgs=await pdfToUrls(src.file,(n,total)=>{ if(msg) msg.textContent="Рендерю PDF: страница "+n+" из "+total+"…"; });
   }else{
+    // png — кадры p-NNN.png от render.js (к ним прилагается manifest.json),
+    // imgs — произвольная папка с картинками, порядок по именам.
+    const frames=(src.kind==="png");
     const files=[];
     for await (const [name,h] of src.handle.entries()){
-      if(/^p-\d+\.png$/i.test(name)) files.push([name,h]);
-      else if(name==="manifest.json"){ try{ manifest=JSON.parse(await (await h.getFile()).text()); }catch(e){} }
+      if(h.kind!=="file") continue;
+      if(frames){
+        if(/^p-\d+\.png$/i.test(name)) files.push([name,h]);
+        else if(name==="manifest.json"){ try{ manifest=JSON.parse(await (await h.getFile()).text()); }catch(e){} }
+      }else if(IMG_RE.test(name)) files.push([name,h]);
     }
     files.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
     for(const [name,h] of files){ imgs.push(URL.createObjectURL(await h.getFile())); }
   }
-  const slides=parseScript(await (await lesson.scriptHandle.getFile()).text());
+  // Пустой источник до студии пускать нельзя: она рисует SLIDES[0] сразу.
+  if(!imgs.length) throw new Error("В «"+src.name+"» не нашлось ни одной картинки.");
+
+  // Самая большая картинка деки задаёт размер записи в режиме «по слайдам».
+  // Меряем все: в папке с картинками они запросто разного размера.
+  let big=null;
+  for(const u of imgs){ const z=await imgSize(u); if(z&&z.w&&z.h&&(!big||z.w*z.h>big.w*big.h)) big=z; }
+  DECKSIZE=big||{w:1920,h:1080};
+
+  // Речитатива может не быть вовсе — тогда все слайды просто без текста.
+  const slides=lesson.scriptHandle ? parseScript(await (await lesson.scriptHandle.getFile()).text()) : [];
   const byId={}; slides.forEach(s=>byId[s.id]=s);
   const data=[];
   for(let i=0;i<imgs.length;i++){
@@ -431,9 +523,9 @@ async function afterCourse(handle){
   try{
     LESSONS=await scanLessons(handle);
     const ready=LESSONS.filter(l=>l.ready);
-    if(!ready.length){ $("#setupMsg").textContent="Не нашёл уроков. Рядом с 03-script.md нужна папка deck_frames/ с PNG или PDF деки."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":""); $("#setupMsg").className="msg err"; return; }
+    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF или deck_frames/ с кадрами; речитатив 03-script.md рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":""); $("#setupMsg").className="msg err"; return; }
     const sel=$("#lessonSel"); sel.innerHTML="";
-    ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name; sel.appendChild(o); });
+    ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name+(l.scriptHandle?"":" — без речитатива"); sel.appendChild(o); });
     const last=LS("lastLesson",null); if(last!=null){ const idx=LESSONS.findIndex(l=>l.name===last&&l.ready); if(idx>=0) sel.value=String(idx); }
     sel.onchange=fillSources; fillSources();
     $("#lessonBox").style.display="block"; $("#setupMsg").textContent=ready.length+" урок(ов) найдено.";
@@ -482,7 +574,7 @@ function bindSetup(){
   idbGet("course").then(async h=>{
     if(!h) return;
     const box=$("#restoreBox"); box.style.display="block";
-    const b=document.createElement("button"); b.className="big"; b.textContent="↩ Открыть последний курс";
+    const b=document.createElement("button"); b.className="big"; b.textContent="↩ Открыть последнюю папку";
     b.onclick=async()=>{ try{ let p=await h.queryPermission({mode:"readwrite"}); if(p!=="granted") p=await h.requestPermission({mode:"readwrite"}); if(p==="granted") await afterCourse(h); else $("#setupMsg").textContent="Доступ к папке не выдан."; }catch(e){ $("#setupMsg").textContent="Не удалось: "+e.message; } };
     box.appendChild(b);
   }).catch(()=>{});
@@ -500,7 +592,8 @@ let st={ i:0, playing:false, speed:7, tempo:LS("tempo",135), font:LS("font",34),
   res:LS("res","1080"), burnIn:LS("burnIn",false), promptPos:LS("promptPos","top"), opacity:LS("opacity",0.78),
   promptW:LS("promptW",1.0), promptH:LS("promptH",0.4), autoScroll:LS("autoScroll",false),
   autoAdvance:LS("autoAdvance",false), camDeviceId:LS("camDeviceId",""), micDeviceId:LS("micDeviceId",""), thumbOpacity:LS("thumbOpacity",0.3), camZoom:LS("camZoom",1), camPanX:LS("camPanX",0), camPanY:LS("camPanY",0), camShape:LS("camShape","rect"),
-  followMeta:LS("followMeta",false), camHide:false };
+  followMeta:LS("followMeta",false), camHide:false,
+  inkPersist:LS("inkPersist",false), inkColor:LS("inkColor","#ff4d4d"), inkWidth:LS("inkWidth",4) };
 let curImg=new Image();
 const CAMPOS={tl:["l","t"],tc:["c","t"],tr:["r","t"],mr:["r","m"],br:["r","b"],bc:["c","b"],bl:["l","b"],ml:["l","m"]};
 const CAMSEQ=["tl","tc","tr","mr","br","bc","bl","ml"];
@@ -509,6 +602,7 @@ let mediaStream=null, micTrack=null, audioCtx=null, analyser=null, vuData=null, 
 let recWritable=null, recName="", markers=[], starting=false;
 
 function showSlide(i){
+  if(!st.inkPersist) inkClearSlide(st.i);
   st.i=Math.max(0,Math.min(SLIDES.length-1,i));
   const s=SLIDES[st.i];
   stage.src=s.img; curImg=new Image(); curImg.src=s.img; const th=$("#slidethumb");if(th)th.src=s.img;
@@ -540,7 +634,7 @@ function applySlideCam(){const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;const c=
 function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;if(st.followMeta||!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
 function slideCam(){applySlideCam();camHint();}
 async function saveCamToScript(){
-  if(!CURLESSON||!CURLESSON.scriptHandle){alert("Нет доступа к 03-script.md урока.");return;}
+  if(!CURLESSON||!CURLESSON.scriptHandle){alert("У этого урока нет 03-script.md — meta:camera писать некуда.");return;}
   const s=SLIDES[st.i], sid=s&&s.id;
   if(!sid){alert("У слайда нет id — meta не пишется.");return;}
   const toks=[];
@@ -564,9 +658,13 @@ async function saveCamToScript(){
   }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
 }
 
-const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:1.0,promptH:0.4,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",followMeta:false};
+const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:1.0,promptH:0.4,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",followMeta:false,inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
 const SET_KEYS=Object.keys(DEFAULTS);
-function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;$("#resbtn").textContent=st.res+"p";$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;const mt=$("#metabtn");if(mt)mt.classList.toggle("active",st.followMeta);}
+function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;syncResBtn();$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;const mt=$("#metabtn");if(mt)mt.classList.toggle("active",st.followMeta);
+  const iw=$("#inkw");if(iw)iw.value=st.inkWidth;
+  inkSyncPersistBtn();
+  document.querySelectorAll("#inkcolors button").forEach(b=>b.classList.toggle("swon",b.dataset.color===st.inkColor));
+}
 function flashBtn(b){if(!b)return;b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),700);}
 function saveSettings(){const o={};for(const k of SET_KEYS)o[k]=st[k];save("preset",o);flashBtn($("#savebtn"));}
 function resetSettings(){const pr=LS("preset",null);for(const k of SET_KEYS){const v=(pr&&pr[k]!==undefined&&pr[k]!==null)?pr[k]:DEFAULTS[k];st[k]=v;save(k,st[k]);}applyAllControls();flashBtn($("#resetbtn"));}
@@ -619,11 +717,34 @@ function drawCamInto(ctx,x,y,w,h,rad,border,circle){
 let laserOn=false, laserPts=[], laserHead=null, lastNorm=null, laserLastPush=0, laserMoveT=0; const LASER_MS=650, LASER_IDLE=3000, LASER_FADE=400;
 function slideNorm(cx,cy){const el=$("#slideImg");if(!el||!curImg||!curImg.naturalWidth)return{inside:false};const b=el.getBoundingClientRect();if(!b.width||!b.height)return{inside:false};const ia=curImg.naturalWidth/curImg.naturalHeight,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}const nx=(cx-b.left-ox)/dw,ny=(cy-b.top-oy)/dh;return{nx,ny,inside:nx>=0&&nx<=1&&ny>=0&&ny<=1};}
 function slideScreenRect(){const el=$("#slideImg");if(!el||!curImg||!curImg.naturalWidth)return null;const b=el.getBoundingClientRect();if(!b.width||!b.height)return null;const ia=curImg.naturalWidth/curImg.naturalHeight,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}return{x:b.left+ox,y:b.top+oy,w:dw,h:dh};}
-function setLaser(on){laserOn=on;const b=$("#laserbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("laser",on);laserPts.length=0;laserHead=(on&&lastNorm&&lastNorm.inside)?{nx:lastNorm.nx,ny:lastNorm.ny}:null;laserMoveT=performance.now();const c=$("#laserlive");if(c){c.style.display=on?"block":"none";if(!on){const g=c.getContext("2d");if(g)g.clearRect(0,0,c.width,c.height);}}}
+function setLaser(on){laserOn=on;const b=$("#laserbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("laser",on);laserPts.length=0;laserHead=(on&&lastNorm&&lastNorm.inside)?{nx:lastNorm.nx,ny:lastNorm.ny}:null;laserMoveT=performance.now();}
 function toggleLaser(){setLaser(!laserOn);}
 function paintLaser(g,map,px){const now=performance.now();while(laserPts.length&&now-laserPts[0].t>LASER_MS)laserPts.shift();g.save();g.lineCap="round";g.lineJoin="round";for(let i=1;i<laserPts.length;i++){const p0=map(laserPts[i-1]),pc=laserPts[i],p1=map(pc),a=Math.max(0,1-(now-pc.t)/LASER_MS);if(a<=0)continue;g.strokeStyle="rgba(255,45,45,"+(a*0.5).toFixed(3)+")";g.lineWidth=Math.max(1.5,6*a)*px;g.beginPath();g.moveTo(p0.x,p0.y);g.lineTo(p1.x,p1.y);g.stroke();}const idle=now-laserMoveT,ha=idle>=LASER_IDLE?0:(idle>LASER_IDLE-LASER_FADE?(LASER_IDLE-idle)/LASER_FADE:1);if(laserHead&&ha>0){g.globalAlpha=ha;const h=map(laserHead),R=6.5*px,gr=g.createRadialGradient(h.x,h.y,0,h.x,h.y,R*2);gr.addColorStop(0,"rgba(255,120,120,.95)");gr.addColorStop(.35,"rgba(255,30,30,.92)");gr.addColorStop(1,"rgba(255,0,0,0)");g.fillStyle=gr;g.beginPath();g.arc(h.x,h.y,R*2,0,6.2832);g.fill();g.fillStyle="rgba(255,235,235,.95)";g.beginPath();g.arc(h.x,h.y,R*0.45,0,6.2832);g.fill();}g.restore();}
 function drawLaser(ctx,cw,ch){if(!curImg||!curImg.naturalWidth)return;const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);paintLaser(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
-function drawLaserLive(){if(!laserOn)return;const c=$("#laserlive");if(!c)return;const dpr=window.devicePixelRatio||1,W=window.innerWidth,H=window.innerHeight;if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);c.style.width=W+"px";c.style.height=H+"px";}const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);const rect=slideScreenRect();if(!rect)return;paintLaser(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),Math.max(0.9,rect.w/1920));}
+function drawLaserLive(){const c=$("#laserlive");if(!c)return;const hasInk=(inkBySlide.get(st.i)||[]).length>0;if(!laserOn&&!hasInk){const g=c.getContext("2d");if(g)g.clearRect(0,0,c.width,c.height);return;}const dpr=window.devicePixelRatio||1,W=window.innerWidth,H=window.innerHeight;if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);c.style.width=W+"px";c.style.height=H+"px";}const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);const rect=slideScreenRect();if(!rect)return;const px=Math.max(0.9,rect.w/1920);paintInk(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),px);if(laserOn)paintLaser(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),px);}
+
+/* ---------- рисование поверх слайда (ink) — как лазер, но штрихи персистентны ---------- */
+const INK_COLORS=["#ff4d4d","#ffd23f","#37d27a","#4d9bff","#ffffff"];
+let inkOn=false, inkTool="pen", inkBySlide=new Map(), inkUndoBySlide=new Map(), inkDown=false, inkCurStroke=null, inkLineStart=null;
+function inkStrokesFor(i){if(!inkBySlide.has(i))inkBySlide.set(i,[]);return inkBySlide.get(i);}
+function inkUndoFor(i){if(!inkUndoBySlide.has(i))inkUndoBySlide.set(i,[]);return inkUndoBySlide.get(i);}
+function inkSnapshot(){const u=inkUndoFor(st.i);u.push(inkStrokesFor(st.i).map(s=>({...s,pts:s.pts.map(p=>({...p}))})));if(u.length>30)u.shift();}
+function inkUndo(){const u=inkUndoFor(st.i);if(!u.length)return;inkBySlide.set(st.i,u.pop());}
+function inkClear(){if(!inkStrokesFor(st.i).length)return;inkSnapshot();inkBySlide.set(st.i,[]);}
+function inkClearSlide(i){inkBySlide.delete(i);inkUndoBySlide.delete(i);}
+function setInkOn(on){inkOn=on;const b=$("#inkbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("ink",on);}
+function toggleInk(){setInkOn(!inkOn);}
+function setInkTool(t){inkTool=t;document.querySelectorAll(".inktool").forEach(b=>b.classList.toggle("active",b.dataset.tool===t));}
+function inkSyncPersistBtn(){const b=$("#inkpersistbtn");if(b)b.textContent=st.inkPersist?"на слайд: хранить":"на слайд: очищать";}
+function ptSegDist(p,a,b){const dx=b.nx-a.nx,dy=b.ny-a.ny,l2=dx*dx+dy*dy;let t=l2?((p.nx-a.nx)*dx+(p.ny-a.ny)*dy)/l2:0;t=Math.max(0,Math.min(1,t));const cx=a.nx+t*dx,cy=a.ny+t*dy;return Math.hypot(p.nx-cx,p.ny-cy);}
+function inkStrokeHit(s,n){const TH=0.02;if(s.pts.length===1)return Math.hypot(n.nx-s.pts[0].nx,n.ny-s.pts[0].ny)<TH;for(let i=1;i<s.pts.length;i++)if(ptSegDist(n,s.pts[i-1],s.pts[i])<TH)return true;return false;}
+function inkEraseAt(n){const arr=inkStrokesFor(st.i);for(let i=arr.length-1;i>=0;i--){if(inkStrokeHit(arr[i],n)){inkSnapshot();arr.splice(i,1);return;}}}
+function inkPointerDown(e){if(!inkOn)return;const n=slideNorm(e.clientX,e.clientY);if(!n.inside)return;e.preventDefault();inkDown=true;if(inkTool==="eraser"){inkEraseAt(n);}else{inkSnapshot();if(inkTool==="line"){inkLineStart=n;inkCurStroke={tool:"line",color:st.inkColor,width:st.inkWidth,pts:[n,n]};}else{inkCurStroke={tool:inkTool,color:st.inkColor,width:st.inkWidth,pts:[n]};}inkStrokesFor(st.i).push(inkCurStroke);}try{$("#stage").setPointerCapture(e.pointerId);}catch(err){}}
+function inkPointerMove(e){if(!inkOn||!inkDown)return;const n=slideNorm(e.clientX,e.clientY);if(inkTool==="eraser"){inkEraseAt(n);return;}if(!inkCurStroke)return;if(inkTool==="line"){let p2=n;if(e.shiftKey&&inkLineStart){const dx=n.nx-inkLineStart.nx,dy=n.ny-inkLineStart.ny,ang=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*(Math.PI/4),len=Math.hypot(dx,dy);p2={nx:inkLineStart.nx+Math.cos(ang)*len,ny:inkLineStart.ny+Math.sin(ang)*len};}inkCurStroke.pts=[inkLineStart,p2];}else{inkCurStroke.pts.push(n);}}
+function inkPointerUp(){inkDown=false;inkCurStroke=null;inkLineStart=null;}
+function drawArrowHead(g,p0,p1,lw){const ang=Math.atan2(p1.y-p0.y,p1.x-p0.x),len=Math.max(9,lw*2.2);g.beginPath();g.moveTo(p1.x,p1.y);g.lineTo(p1.x-len*Math.cos(ang-0.45),p1.y-len*Math.sin(ang-0.45));g.moveTo(p1.x,p1.y);g.lineTo(p1.x-len*Math.cos(ang+0.45),p1.y-len*Math.sin(ang+0.45));g.stroke();}
+function paintInk(g,map,px){const arr=inkBySlide.get(st.i);if(!arr||!arr.length)return;g.save();g.lineCap="round";g.lineJoin="round";for(const s of arr){const marker=s.tool==="marker";g.strokeStyle=s.color;g.globalAlpha=marker?0.35:1;g.lineWidth=Math.max(1,marker?s.width*2.6:s.width)*px;const pts=s.pts;if(!pts.length)continue;g.beginPath();if(pts.length===1){const p=map(pts[0]);g.moveTo(p.x,p.y);g.lineTo(p.x+0.01,p.y);g.stroke();continue;}for(let i=0;i<pts.length;i++){const p=map(pts[i]);if(i===0)g.moveTo(p.x,p.y);else g.lineTo(p.x,p.y);}g.stroke();if(s.tool==="line")drawArrowHead(g,map(pts[0]),map(pts[pts.length-1]),g.lineWidth);}g.restore();}
+function drawInk(ctx,cw,ch){if(!curImg||!curImg.naturalWidth)return;const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);paintInk(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
 function drawFrame(){
   const cw=canvas.width,ch=canvas.height,ctx=canvas.getContext("2d");
   ctx.fillStyle="#0b0c0f";ctx.fillRect(0,0,cw,ch);
@@ -638,6 +759,7 @@ function drawFrame(){
     }
   }
   if(st.burnIn) drawBurnIn(ctx,cw,ch);
+  if(!st.camFull && (inkBySlide.get(st.i)||[]).length) drawInk(ctx,cw,ch);
   if(laserOn && !st.camFull) drawLaser(ctx,cw,ch);
 }
 function drawBurnIn(ctx,cw,ch){
@@ -659,12 +781,30 @@ function tcFmt(s){const m=Math.floor(s/60),x=s%60;return (m<10?"0":"")+m+":"+(x<
 function addMarker(type){if(!recording)return;markers.push({t:recSecs(),slide:st.i+1,type});}
 function flashCut(){const b=$("#cutbtn");if(b){b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),500);}const mb=$("#m_cut");if(mb){mb.classList.add("ok");setTimeout(()=>mb.classList.remove("ok"),500);}}
 function markCut(){if(!recording)return;addMarker("cut");flashCut();}
+/* Размер кадра записи. 720p/1080p — привычные пресеты (слайд вписывается,
+   поля добираются чёрным), «по слайдам» — размер самой большой картинки:
+   полноэкранная дека 16:9 даст ровно 1920×1080, а нестандартная — кадр без
+   полей. Кодек хочет чётные стороны, и совсем гигантские кадры режем до 4K,
+   иначе браузер не вытянет 30 fps. */
+const RES_SEQ=["1080","720","deck"];
+function recSize(){
+  if(st.res==="720")  return [1280,720];
+  if(st.res!=="deck") return [1920,1080];
+  let {w,h}=DECKSIZE; if(!w||!h) return [1920,1080];
+  const k=Math.min(1,3840/w,2160/h); w=Math.round(w*k); h=Math.round(h*k);
+  return [Math.max(2,w-(w%2)), Math.max(2,h-(h%2))];
+}
+function resLabel(){ if(st.res==="deck"){const [w,h]=recSize();return w+"×"+h;} return st.res+"p"; }
+function syncResBtn(){const b=$("#resbtn");if(!b)return;b.textContent=resLabel();
+  b.classList.toggle("active",st.res==="deck");
+  b.title=st.res==="deck"?"размер записи: по самой большой картинке слайдов — без чёрных полей":"размер записи (жми, чтобы переключить; «по слайдам» = размер самих картинок)";}
+
 function runCountdown(n){return new Promise(res=>{const el=$("#countdown");if(!el){res();return;}let k=n;el.style.display="flex";el.textContent=k;const tick=()=>{k--;if(k<=0){el.style.display="none";res();}else{el.textContent=k;setTimeout(tick,1000);}};setTimeout(tick,1000);});}
 async function startRec(){
   if(recording||starting)return; starting=true;
   try{
     const aTrack=await ensureAudio();
-    const [cw,ch]=st.res==="720"?[1280,720]:[1920,1080];
+    const [cw,ch]=recSize();
     canvas.width=cw;canvas.height=ch;drawing=true;drawFrame();
     const tracks=canvas.captureStream(30).getVideoTracks();
     const hasAudio=aTrack&&aTrack.readyState==="live"; if(hasAudio)tracks.push(aTrack);
@@ -691,7 +831,7 @@ async function writeMarkers(){
 }
 function stopRec(){if(rec&&recording){rec.stop();}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
 function stopRecDiscard(){if(rec&&recording){recDiscard=true;rec.stop();}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
-function restartShow(){if(recording&&!confirm("Идёт запись. Начать презентацию сначала? Текущая запись будет отброшена."))return;if(recording)stopRecDiscard();recAccum=0;showSlide(0);}
+function restartShow(){if(recording&&!confirm("Идёт запись. Начать презентацию сначала? Текущая запись будет отброшена."))return;if(recording)stopRecDiscard();recAccum=0;inkBySlide.clear();inkUndoBySlide.clear();showSlide(0);}
 function togglePause(){if(!recording||!rec)return;if(recPaused){try{rec.resume();}catch(e){}recPaused=false;st.playing=prePausePlaying;syncPlay();}else{try{rec.pause();}catch(e){}recPaused=true;prePausePlaying=st.playing;st.playing=false;cancelAdv();advArmed=true;syncPlay();addMarker("pause");}updateRecUI();}
 function updateRecUI(){
   const on=recording,p=recPaused,show=(id,v)=>{const e=$(id);if(e)e.style.display=v?"":"none";};
@@ -745,7 +885,7 @@ function bindStudio(){
   $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);if(!recording){if(micTrack){try{micTrack.stop();}catch(e){}micTrack=null;}ensureAudio();}};
   $("#recbtn").onclick=startRec;$("#pausebtn").onclick=togglePause;$("#stopbtn").onclick=stopRec;
   $("#cutbtn").onclick=markCut;$("#m_cut").onclick=markCut;
-  $("#resbtn").onclick=()=>{st.res=st.res==="1080"?"720":"1080";save("res",st.res);$("#resbtn").textContent=st.res+"p";};
+  $("#resbtn").onclick=()=>{const i=RES_SEQ.indexOf(st.res);st.res=RES_SEQ[(i+1)%RES_SEQ.length];save("res",st.res);syncResBtn();};
   $("#burnbtn").onclick=()=>{st.burnIn=!st.burnIn;save("burnIn",st.burnIn);$("#burnbtn").classList.toggle("active",st.burnIn);};
   $("#posbtn").onclick=()=>{st.promptPos=st.promptPos==="top"?"bottom":"top";save("promptPos",st.promptPos);applyPromptBox();};
   $("#opac").oninput=e=>{st.opacity=+e.target.value;save("opacity",st.opacity);applyPromptBox();};
@@ -765,6 +905,18 @@ function bindStudio(){
   $("#metabtn").onclick=()=>{resetCamDefault();flashBtn($("#metabtn"));camHint();};
   $("#laserbtn").onclick=toggleLaser;
   window.addEventListener("mousemove",e=>{const n=slideNorm(e.clientX,e.clientY);lastNorm=n;if(laserOn&&n.inside){laserHead={nx:n.nx,ny:n.ny};const t=performance.now();laserMoveT=t;if(t-laserLastPush>8){laserPts.push({nx:n.nx,ny:n.ny,t});laserLastPush=t;}}else laserHead=null;});
+  $("#inkbtn").onclick=toggleInk;
+  document.querySelectorAll(".inktool").forEach(b=>b.onclick=()=>setInkTool(b.dataset.tool));
+  setInkTool("pen");
+  $("#inkundo").onclick=inkUndo;
+  $("#inkclear").onclick=inkClear;
+  $("#inkw").oninput=e=>{st.inkWidth=+e.target.value;save("inkWidth",st.inkWidth);};
+  $("#inkpersistbtn").onclick=()=>{st.inkPersist=!st.inkPersist;save("inkPersist",st.inkPersist);inkSyncPersistBtn();};
+  { const box=$("#inkcolors"); INK_COLORS.forEach(c=>{const b=document.createElement("button");b.style.background=c;b.dataset.color=c;b.title=c;b.onclick=()=>{st.inkColor=c;save("inkColor",c);document.querySelectorAll("#inkcolors button").forEach(x=>x.classList.toggle("swon",x.dataset.color===c));};box.appendChild(b);}); }
+  $("#stage").addEventListener("pointerdown",inkPointerDown);
+  $("#stage").addEventListener("pointermove",inkPointerMove);
+  $("#stage").addEventListener("pointerup",inkPointerUp);
+  $("#stage").addEventListener("pointercancel",inkPointerUp);
   $("#metasavebtn").onclick=saveCamToScript;
   $("#m_camfull").onclick=toggleCamFull;
   $("#savebtn").onclick=saveSettings;
@@ -782,9 +934,12 @@ function bindStudio(){
     else if(e.key.toLowerCase()==="r"){recording?stopRec():startRec();}
     else if(e.key.toLowerCase()==="f"){$("#full").click();}
     else if(e.key.toLowerCase()==="l"){toggleLaser();}
+    else if(e.key.toLowerCase()==="d"){toggleInk();}
+    else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"&&inkOn){inkUndo();e.preventDefault();}
   });
 }
 function startStudio(){
+  const ll=$("#laserlive");if(ll)ll.style.display="block";
   applyAllControls();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
   if(!started){ started=true; bindStudio(); requestAnimationFrame(loop); }

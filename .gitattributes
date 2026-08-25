@@ -1,0 +1,3 @@
+# Батники для Windows должны приезжать с CRLF, иначе cmd.exe спотыкается.
+*.cmd text eol=crlf
+*.bat text eol=crlf
