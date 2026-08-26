@@ -73,10 +73,21 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
    получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
    суфлёром и камерой, а строки — в дырках. */
 #g-sufl{flex-basis:100%;order:0;}
-#g-slide{order:1;} #g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;} #g-more{order:5;}
+#g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;}
+/* «Ещё» лежит не в #barleft, а рядом с ним, поэтому в общий поток и порядок
+   групп не входит. Прижимаем его к правому нижнему углу панели: при
+   align-items:center он центрировался по высоте всех строк и болтался
+   где-то посередине. */
+/* «Слайд» и «ещё» вынесены из переносимого потока и прибиты к нижним углам
+   панели: листать слайды и жать «свернуть» нужно всегда, и эти кнопки не
+   должны прыгать по строкам, когда развернули какую-нибудь группу. Между ними
+   — #barleft с остальными группами, он и переносится. */
+#g-slide,#g-more{align-self:flex-end;flex:0 0 auto;}
 /* Свёрнутая группа не занимает целую строку — иначе сворачивать суфлёр
-   бессмысленно: строка остаётся. */
+   бессмысленно: строка остаётся. Селектор с id, потому что #g-sufl задаёт
+   flex-basis:100% и по специфичности перебивает голый класс. */
 .grp.folded{flex-basis:auto;}
+#g-sufl.folded{flex-basis:auto;}
 button{background:var(--btn);color:var(--txt);border:0;border-radius:9px;padding:9px 12px;font-size:15px;cursor:pointer;min-height:40px;}
 button:hover{background:var(--btn2);} button.active{background:var(--acc);color:#111;}
 .grp{display:flex;gap:5px;align-items:center;flex-wrap:wrap;row-gap:6px;background:#161a23;border:1px solid #2a2e39;border-radius:13px;padding:6px 10px;}
@@ -172,8 +183,8 @@ input[type=range]{width:90px;}
 </div>
 
 <div id="bar">
-  <div id="barleft">
   <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="back" title="к выбору урока">☰</button><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
+  <div id="barleft">
   <div class="grp" id="g-sufl"><span class="cap">суфлёр</span><button id="suflvis" title="показать / скрыть суфлёр">👁</button><button id="play">▶</button>
      <span class="vdiv"></span>
      <button id="spdm">–</button><span class="lab">скор <b id="spdval">7</b></span><button id="spdp">+</button>
@@ -992,7 +1003,7 @@ function foldGroup(id, folded, remember){
   if(remember!==false) save("fold:"+id, !!folded);
 }
 function bindGroupFolding(){
-  document.querySelectorAll("#barleft .grp").forEach(g=>{
+  document.querySelectorAll("#bar .grp").forEach(g=>{
     const cap=g.querySelector(".cap"); if(!cap || !g.id) return;
     cap.title="клик — свернуть или развернуть эту группу";
     foldGroup(g.id, LS("fold:"+g.id,false), false);
