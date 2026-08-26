@@ -224,7 +224,7 @@ input[type=range]{width:90px;}
 
 <div id="minibar">
   <div class="mg"><div class="mr"><button id="m_prev" title="назад">◀</button><button id="m_next" title="вперёд">▶</button></div><span class="mc">слайд</span></div>
-  <div class="mg"><div class="mr"><button id="m_play" title="суфлёр: пуск/пауза">▶</button></div><span class="mc">суфлёр</span></div>
+  <div class="mg" id="m-sufl"><div class="mr"><button id="m_play" title="суфлёр: пуск/пауза">▶</button></div><span class="mc">суфлёр</span></div>
   <div class="mg"><div class="mr"><button id="m_rec" title="запись">⏺</button><button id="m_pause" style="display:none" title="пауза/продолжить">⏸</button><button id="m_stop" style="display:none" title="стоп">⏹</button><button id="m_cut" title="отметка">⚑</button></div><span class="mc">запись</span></div>
   <div class="mg"><div class="mr"><button id="m_cam" title="камера">📷</button><button id="m_camfull" title="камера на весь экран"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17.8c0-2.3 1.8-3.7 4-3.7s4 1.4 4 3.7"/></svg></button></div><span class="mc">камера</span></div>
   <div class="mg"><div class="mr"><button id="m_expand" title="показать панель">⌃</button></div><span class="mc">панель</span></div>
@@ -681,6 +681,24 @@ function loop(ts){
   drawLaserLive();
   requestAnimationFrame(loop);
 }
+/* Урок без речитатива: суфлёр не просто пустой — его вообще не показываем,
+   вместе с его пультом и «вшить текст». Иначе пол-экрана занимает окно с
+   прочерком, а кнопки обещают то, чего в уроке нет.
+   Ручное скрытие суфлёра пользователем при этом не теряется: обратно
+   показываем только то, что спрятали сами. */
+let NOSCRIPT=false, promptHiddenByUs=false;
+function setPrompterVisible(v){
+  prompter.classList.toggle("hidden",!v);
+  const c=$("#suflcap"); if(c) c.classList.toggle("off",!v);
+  syncScrollCtl();
+}
+function applyScriptPresence(){
+  NOSCRIPT=!SLIDES.some(s=>s.plain && s.plain.trim());
+  for(const id of ["#g-sufl","#m-sufl","#burnbtn"]){ const el=$(id); if(el) el.style.display=NOSCRIPT?"none":""; }
+  if(NOSCRIPT){ if(!prompter.classList.contains("hidden")){ setPrompterVisible(false); promptHiddenByUs=true; } }
+  else if(promptHiddenByUs){ setPrompterVisible(true); promptHiddenByUs=false; }
+}
+
 function syncPlay(){const g=st.playing?"⏸":"▶";$("#play").textContent=g;const mp=$("#m_play");if(mp)mp.textContent=g;syncScrollCtl();}
 function placeScrollCtl(){const sc=$("#scrollctl");if(!sc)return null;if(prompter.classList.contains("hidden")){sc.style.display="none";return null;}const r=prompter.getBoundingClientRect(),vh=window.innerHeight;sc.style.left=(r.right-62)+"px";sc.style.top=((vh-r.bottom)>=r.top?(r.bottom+8):(r.top-58))+"px";sc.textContent=st.playing?"⏸":"▶";return sc;}
 function syncScrollCtl(){const sc=placeScrollCtl();if(!sc)return;clearTimeout(scrollHideTimer);sc.style.display=st.playing?"none":"flex";}
@@ -889,7 +907,7 @@ function bindStudio(){
   $("#burnbtn").onclick=()=>{st.burnIn=!st.burnIn;save("burnIn",st.burnIn);$("#burnbtn").classList.toggle("active",st.burnIn);};
   $("#posbtn").onclick=()=>{st.promptPos=st.promptPos==="top"?"bottom":"top";save("promptPos",st.promptPos);applyPromptBox();};
   $("#opac").oninput=e=>{st.opacity=+e.target.value;save("opacity",st.opacity);applyPromptBox();};
-  $("#suflcap").onclick=()=>{const h=prompter.classList.toggle("hidden");$("#suflcap").classList.toggle("off",h);syncScrollCtl();};
+  $("#suflcap").onclick=()=>{ setPrompterVisible(prompter.classList.contains("hidden")); promptHiddenByUs=false; };
   $("#pwm").onclick=()=>{st.promptW=Math.max(0.28,+(st.promptW-0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
   $("#pwp").onclick=()=>{st.promptW=Math.min(1,+(st.promptW+0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
   $("#phm").onclick=()=>{st.promptH=Math.max(0.06,+(st.promptH-0.04).toFixed(2));save("promptH",st.promptH);applyPromptBox();};
@@ -940,7 +958,7 @@ function bindStudio(){
 }
 function startStudio(){
   const ll=$("#laserlive");if(ll)ll.style.display="block";
-  applyAllControls();updateRecUI();$("#timers").style.display="flex";populateDevices();
+  applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
   if(!started){ started=true; bindStudio(); requestAnimationFrame(loop); }
 }
