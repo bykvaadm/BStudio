@@ -68,9 +68,15 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 #promptInner .muted{color:#7e838c;font-style:italic;font-weight:500;}
 #bar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:none;gap:11px;align-items:center;flex-wrap:nowrap;
   padding:12px 12px;background:linear-gradient(0deg,#0a0b0e,rgba(10,11,14,.9));border-top:1px solid #20232c;}
-#barleft{display:flex;flex-wrap:wrap;gap:9px 11px;align-items:center;flex:1;min-width:0;}
+#barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-start;align-content:flex-start;flex:1;min-width:0;}
+/* Порядок групп задаём всем сразу. Без этого те, кому order не назначен,
+   получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
+   суфлёром и камерой, а строки — в дырках. */
 #g-sufl{flex-basis:100%;order:0;}
-#g-cam{order:1;} #g-slide{order:2;} #g-rec{order:3;}
+#g-slide{order:1;} #g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;} #g-more{order:5;}
+/* Свёрнутая группа не занимает целую строку — иначе сворачивать суфлёр
+   бессмысленно: строка остаётся. */
+.grp.folded{flex-basis:auto;}
 button{background:var(--btn);color:var(--txt);border:0;border-radius:9px;padding:9px 12px;font-size:15px;cursor:pointer;min-height:40px;}
 button:hover{background:var(--btn2);} button.active{background:var(--acc);color:#111;}
 .grp{display:flex;gap:5px;align-items:center;flex-wrap:wrap;row-gap:6px;background:#161a23;border:1px solid #2a2e39;border-radius:13px;padding:6px 10px;}
@@ -80,6 +86,15 @@ button:hover{background:var(--btn2);} button.active{background:var(--acc);color:
 .cap.captog{cursor:pointer;border-right:0;padding:3px 8px;margin-right:5px;border-radius:7px;background:rgba(55,210,122,.20);color:#bfe8cf;transition:background .15s,color .15s;}
 .cap.captog.off{background:rgba(150,160,172,.14);color:#878d96;}
 .cap.captog:hover{filter:brightness(1.12);}
+/* Групп в панели накопилось много: на узком экране они занимают несколько строк
+   и перекрывают слайд. Клик по названию сворачивает группу до одного ярлыка —
+   строка освобождается, а что там внутри, видно по названию. */
+.cap{cursor:pointer;user-select:none;}
+.cap::after{content:"▾";margin-left:6px;font-size:9px;opacity:.5;}
+.grp.folded .cap::after{content:"▸";}
+.grp.folded>*:not(.cap){display:none;}
+.grp.folded .cap{border-right:0;padding-right:0;margin-right:0;color:#6f757e;}
+.grp.folded{padding:6px 11px;}
 .vdiv{width:1px;align-self:stretch;min-height:22px;background:#2c3039;margin:0 2px;}
 .grp.rec .vdiv{background:#5e2c27;}
 .solo{background:#161a23;border:1px solid #2a2e39;border-radius:13px;}
@@ -109,6 +124,17 @@ input[type=range]{width:90px;}
 #minibar .mg{display:flex;flex-direction:column;align-items:center;gap:3px;}
 #minibar .mr{display:flex;gap:6px;align-items:center;}
 #minibar .mc{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:#8a8f99;line-height:1;}
+/* 13-дюймовые маки и прочие невысокие экраны: панель ужимается, чтобы не
+   отъедать у слайда лишнюю строку. */
+@media(max-width:1600px){
+  #bar{padding:8px 10px;gap:8px;}
+  #barleft{gap:6px 8px;}
+  button{padding:7px 9px;font-size:13.5px;min-height:34px;border-radius:8px;}
+  .grp{gap:4px;padding:5px 8px;border-radius:11px;}
+  .cap{font-size:9px;padding-right:6px;margin-right:2px;}
+  .lab{font-size:11px;}
+  select{max-width:150px;}
+}
 @media(max-width:760px){ #promptInner{font-size:30px;} button{padding:8px 10px;font-size:14px;} .lab{display:none;} }
 </style></head>
 <body>
@@ -148,7 +174,7 @@ input[type=range]{width:90px;}
 <div id="bar">
   <div id="barleft">
   <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="back" title="к выбору урока">☰</button><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
-  <div class="grp" id="g-sufl"><span class="cap captog" id="suflcap" title="показать / скрыть суфлёр">суфлёр</span><button id="play">▶</button>
+  <div class="grp" id="g-sufl"><span class="cap">суфлёр</span><button id="suflvis" title="показать / скрыть суфлёр">👁</button><button id="play">▶</button>
      <span class="vdiv"></span>
      <button id="spdm">–</button><span class="lab">скор <b id="spdval">7</b></span><button id="spdp">+</button>
      <span class="vdiv"></span>
@@ -751,7 +777,7 @@ function loop(ts){
 let NOSCRIPT=false, promptHiddenByUs=false;
 function setPrompterVisible(v){
   prompter.classList.toggle("hidden",!v);
-  const c=$("#suflcap"); if(c) c.classList.toggle("off",!v);
+  const c=$("#suflvis"); if(c) c.classList.toggle("active",v);
   syncScrollCtl();
 }
 function applyScriptPresence(){
@@ -935,6 +961,23 @@ document.addEventListener("visibilitychange",()=>{if(document.visibilityState===
 window.addEventListener("resize",()=>{syncSpeed();applySpeed();syncScrollCtl();});
 window.addEventListener("beforeunload",e=>{if(recording){e.preventDefault();e.returnValue="";}});
 
+/* Сворачивание групп панели. Состояние помнится по каждой группе отдельно:
+   у кого-то не нужно рисование, у кого-то камера — панель должна оставаться
+   такой, какой её сложили в прошлый раз. */
+function foldGroup(id, folded, remember){
+  const g=$("#"+id); if(!g) return;
+  g.classList.toggle("folded", !!folded);
+  if(remember!==false) save("fold:"+id, !!folded);
+}
+function bindGroupFolding(){
+  document.querySelectorAll("#barleft .grp").forEach(g=>{
+    const cap=g.querySelector(".cap"); if(!cap || !g.id) return;
+    cap.title="клик — свернуть или развернуть эту группу";
+    foldGroup(g.id, LS("fold:"+g.id,false), false);
+    cap.onclick=()=>foldGroup(g.id, !g.classList.contains("folded"));
+  });
+}
+
 function bindStudio(){
   $("#prev").onclick=()=>showSlide(st.i-1);
   $("#next").onclick=()=>showSlide(st.i+1);
@@ -969,7 +1012,7 @@ function bindStudio(){
   $("#burnbtn").onclick=()=>{st.burnIn=!st.burnIn;save("burnIn",st.burnIn);$("#burnbtn").classList.toggle("active",st.burnIn);};
   $("#posbtn").onclick=()=>{st.promptPos=st.promptPos==="top"?"bottom":"top";save("promptPos",st.promptPos);applyPromptBox();};
   $("#opac").oninput=e=>{st.opacity=+e.target.value;save("opacity",st.opacity);applyPromptBox();};
-  $("#suflcap").onclick=()=>{ setPrompterVisible(prompter.classList.contains("hidden")); promptHiddenByUs=false; };
+  $("#suflvis").onclick=()=>{ setPrompterVisible(prompter.classList.contains("hidden")); promptHiddenByUs=false; };
   $("#pwm").onclick=()=>{st.promptW=Math.max(0.28,+(st.promptW-0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
   $("#pwp").onclick=()=>{st.promptW=Math.min(1,+(st.promptW+0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
   $("#phm").onclick=()=>{st.promptH=Math.max(0.06,+(st.promptH-0.04).toFixed(2));save("promptH",st.promptH);applyPromptBox();};
@@ -1022,7 +1065,7 @@ function startStudio(){
   const ll=$("#laserlive");if(ll)ll.style.display="block";
   applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
-  if(!started){ started=true; bindStudio(); requestAnimationFrame(loop); }
+  if(!started){ started=true; bindStudio(); bindGroupFolding(); requestAnimationFrame(loop); }
 }
 
 bindSetup();
