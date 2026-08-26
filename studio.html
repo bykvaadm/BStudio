@@ -399,7 +399,7 @@ async function scanLessons(root){
    остаться полностью офлайновым, ради него студию и открывают без интернета.
    Версия не одна, а списком кандидатов: у cdnjs пути к сборкам менялись между
    мажорами (.js → .mjs), и жёстко прибитая версия однажды тихо отвалится. */
-let PDFJS=null;
+let PDFJS=null, PDF_TRIMMED=null;   // PDF_TRIMMED — какую долю страницы занял слайд после обрезки
 async function ensurePdfJs(){
   if(PDFJS) return PDFJS;
   const candidates=[
@@ -426,27 +426,87 @@ async function ensurePdfJs(){
    исход, поэтому жалобы перехватываем и показываем. Событийного API у pdf.js для
    этого нет, warn() пишет прямо в console.log, отсюда перехват. */
 let PDF_WARNINGS=[];
+/* Поля вокруг слайда. Дека, экспортированная «как есть», приезжает страницей
+   Letter/A4 (792×612), а сам слайд 16:9 лежит внутри — вокруг однотонная рамка.
+   Студия рисует страницу целиком, и в кадре получаются поля со всех сторон.
+   Поэтому перед выдачей кадров ищем эту рамку и срезаем.
+
+   Рамку считаем по всем страницам сразу и берём объединение: слайды должны быть
+   одного размера, иначе дека прыгает при перелистывании. Если хоть одна
+   страница залита под обрез — объединение накроет всю страницу, и резать
+   нечего, что и правильно. */
+const PDF_TRIM_TOL=10;          // допуск «тот же цвет», 0..255 на канал
+const PDF_TRIM_PROBE_W=360;     // ширина прикидочного рендера: поля видно и на нём
+
+async function pdfTrimBox(pdf, onProgress){
+  let box=null;
+  for(let n=1;n<=pdf.numPages;n++){
+    if(onProgress) onProgress(n, pdf.numPages);
+    const page=await pdf.getPage(n);
+    const base=page.getViewport({scale:1});
+    const vp=page.getViewport({scale:PDF_TRIM_PROBE_W/base.width});
+    const c=document.createElement("canvas");
+    c.width=Math.round(vp.width); c.height=Math.round(vp.height);
+    const ctx=c.getContext("2d",{alpha:false,willReadFrequently:true});
+    await page.render({canvasContext:ctx, viewport:vp}).promise;
+    const W=c.width, H=c.height, d=ctx.getImageData(0,0,W,H).data;
+    const at=(x,y)=>{const i=(y*W+x)*4; return [d[i],d[i+1],d[i+2]];};
+    const same=(p,q)=>Math.abs(p[0]-q[0])<=PDF_TRIM_TOL&&Math.abs(p[1]-q[1])<=PDF_TRIM_TOL&&Math.abs(p[2]-q[2])<=PDF_TRIM_TOL;
+    // Фон — цвет углов. Углы разного цвета значит рамки нет: резать нечего.
+    const bg=at(0,0);
+    if(![at(W-1,0),at(0,H-1),at(W-1,H-1)].every(p=>same(p,bg))) return null;
+    let x0=W, y0=H, x1=-1, y1=-1;
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      if(same(at(x,y),bg)) continue;
+      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+    }
+    if(x1<0) continue;                       // страница пустая целиком — не в счёт
+    const b={x0:x0/W, y0:y0/H, x1:(x1+1)/W, y1:(y1+1)/H};
+    box = box ? {x0:Math.min(box.x0,b.x0), y0:Math.min(box.y0,b.y0),
+                 x1:Math.max(box.x1,b.x1), y1:Math.max(box.y1,b.y1)} : b;
+  }
+  if(!box) return null;
+  const w=box.x1-box.x0, h=box.y1-box.y0;
+  if(w*h>0.97) return null;                  // поля в пару пикселей — не трогаем
+  if(w<0.2||h<0.2) return null;              // подозрительно мало: лучше отдать страницу как есть
+  return box;
+}
+
 async function pdfToUrls(fileHandle, onProgress){
   const lib=await ensurePdfJs();
   const buf=await (await fileHandle.getFile()).arrayBuffer();
   PDF_WARNINGS=[];
+  PDF_TRIMMED=null;
   const origLog=console.log;
   console.log=(...a)=>{ const t=a.join(" "); if(/warning|unsupported/i.test(t)) PDF_WARNINGS.push(t); origLog.apply(console,a); };
   try{
   const pdf=await lib.getDocument({data:buf}).promise;
   const TARGET_W=1920;                       // тот же размер, что у render.js
+  const trim=await pdfTrimBox(pdf, (n,total)=>{ if(onProgress) onProgress(n,total,"поля"); });
   const urls=[];
+  const canvas=document.createElement("canvas");        // одна и та же на все страницы
+  const out=trim?document.createElement("canvas"):null;
   for(let n=1;n<=pdf.numPages;n++){
     const page=await pdf.getPage(n);
     const base=page.getViewport({scale:1});
-    const vp=page.getViewport({scale:TARGET_W/base.width});
-    const canvas=document.createElement("canvas");
+    // Масштаб считаем так, чтобы 1920 пришлось на слайд, а не на страницу с полями.
+    const vp=page.getViewport({scale:TARGET_W/(base.width*(trim?trim.x1-trim.x0:1))});
     canvas.width=Math.round(vp.width); canvas.height=Math.round(vp.height);
     await page.render({canvasContext:canvas.getContext("2d",{alpha:false}), viewport:vp}).promise;
-    const blob=await new Promise(res=>canvas.toBlob(res,"image/png"));
+    let src=canvas;
+    if(trim){
+      const sx=Math.round(trim.x0*canvas.width), sy=Math.round(trim.y0*canvas.height);
+      const sw=Math.max(2,Math.round((trim.x1-trim.x0)*canvas.width));
+      const sh=Math.max(2,Math.round((trim.y1-trim.y0)*canvas.height));
+      out.width=sw; out.height=sh;
+      out.getContext("2d",{alpha:false}).drawImage(canvas, sx,sy,sw,sh, 0,0,sw,sh);
+      src=out;
+    }
+    const blob=await new Promise(res=>src.toBlob(res,"image/png"));
     urls.push(URL.createObjectURL(blob));
     if(onProgress) onProgress(n, pdf.numPages);
   }
+  if(trim) PDF_TRIMMED={w:Math.round((trim.x1-trim.x0)*100), h:Math.round((trim.y1-trim.y0)*100)};
   return urls;
   } finally { console.log=origLog; }
 }
@@ -478,7 +538,9 @@ async function loadLesson(lesson, src){
   let imgs=[], manifest=null;
   if(src.kind==="pdf"){
     const msg=document.querySelector("#setupMsg");
-    imgs=await pdfToUrls(src.file,(n,total)=>{ if(msg) msg.textContent="Рендерю PDF: страница "+n+" из "+total+"…"; });
+    imgs=await pdfToUrls(src.file,(n,total,phase)=>{ if(msg) msg.textContent=phase==="поля"
+      ? "Ищу поля вокруг слайдов: страница "+n+" из "+total+"…"
+      : "Рендерю PDF: страница "+n+" из "+total+"…"+(PDF_TRIMMED?" (поля обрезаны)":""); });
   }else{
     // png — кадры p-NNN.png от render.js (к ним прилагается manifest.json),
     // imgs — произвольная папка с картинками, порядок по именам.
