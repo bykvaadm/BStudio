@@ -80,6 +80,10 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 /* Версия студии — под «ещё», в паддинге панели: место постоянное, высоты не
    отъедает, выделить и скопировать можно. Нужна, чтобы по скриншоту было
    видно, та ли версия у человека. */
+/* Переключатель судьбы штрихов — в две строки: подпись сверху, значение снизу. */
+#inkpersistbtn{line-height:1.15;padding:4px 10px;text-align:center;}
+#inkpersistbtn i{display:block;font-style:normal;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;}
+#inkpersistbtn b{display:block;font-weight:600;}
 #ver{position:absolute;right:13px;bottom:1px;font-size:9px;letter-spacing:.04em;color:#5f656e;pointer-events:auto;white-space:nowrap;}
 #verSetup{margin-top:14px;font-size:11px;color:#6f757e;text-align:center;}   /* именно группы, а не контейнеры: пустое место строки кликов не ловит */
 #barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-end;align-content:flex-end;flex:1;min-width:0;}
@@ -106,10 +110,6 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
    строкам, когда что-нибудь развернули. */
 #barbottom{display:flex;align-items:flex-end;gap:9px;}
 #barbottom #g-more{margin-left:auto;}
-/* Свёрнутая группа не занимает целую строку — иначе сворачивать суфлёр
-   бессмысленно: строка остаётся. Селектор с id, потому что #g-sufl задаёт
-   flex-basis:100% и по специфичности перебивает голый класс. */
-
 button{background:var(--btn);color:var(--txt);border:0;border-radius:9px;padding:9px 12px;font-size:15px;cursor:pointer;min-height:40px;}
 button:hover{background:var(--btn2);} button.active{background:var(--acc);color:#111;}
 /* Группы переносятся целиком, как блоки, но внутри себя не рвутся: раньше
@@ -244,7 +244,6 @@ input[type=range]{width:90px;}
      <button id="camfullbtn" title="камера на весь экран (вкл/выкл)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17.8c0-2.3 1.8-3.7 4-3.7s4 1.4 4 3.7"/></svg></button>
      <button id="camshape" title="форма камеры: ▭ прямоугольник / ◯ круг">▭</button>
      <button id="metabtn" title="сбросить камеру в дефолт (низ-право, стандартный размер). Слайды без meta показывают эту базу; meta переопределяет только свой слайд.">сброс камеры</button>
-     <button id="laserbtn" title="лазерная указка: курсор пишется в видео красной точкой со следом (клавиша L)">🔴 курсор</button>
      <button id="metasavebtn" title="записать текущие параметры камеры в скрипт (&lt;!-- meta:camera … --&gt;) для этого слайда">📷→скрипт</button>
      <span class="vdiv"></span>
      <span class="sld"><input id="camsz" type="range" min="0.14" max="0.42" step="0.01"><span class="scap">размер</span></span>
@@ -254,6 +253,7 @@ input[type=range]{width:90px;}
      <span class="vdiv"></span>
      <span class="sld"><input id="thumbop" type="range" min="0" max="1" step="0.05" title="Прозрачность миниатюры слайда в углу — видна только в режиме «камера на весь экран», чтобы видеть слайд, говоря в камеру. 0 — миниатюры нет, 1 — непрозрачная. В запись не попадает."><span class="scap">миниатюра</span></span></div>
   <div class="grp" id="g-ink"><span class="cap">рисование</span>
+     <button id="laserbtn" title="лазерная указка: курсор пишется в видео красной точкой со следом (клавиша L)">🔴 курсор</button>
      <button id="inkbtn" title="режим рисования поверх слайда — штрихи пишутся в видео (клавиша D)">✏️ рисование</button>
      <span class="vdiv"></span>
      <button class="inktool" id="inktool-pen" data-tool="pen" title="перо">✏️</button>
@@ -312,7 +312,7 @@ const $ = s => document.querySelector(s);
 /* Подставляется скриптом stamp-version.py: дата публикации и первые семь
    символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
    был воспроизводим). */
-const STUDIO_VERSION="2026-08-27 · 4ca81d2";
+const STUDIO_VERSION="2026-08-27 · 331130f";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
@@ -918,7 +918,11 @@ function inkClearSlide(i){inkBySlide.delete(i);inkUndoBySlide.delete(i);}
 function setInkOn(on){inkOn=on;const b=$("#inkbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("ink",on);}
 function toggleInk(){setInkOn(!inkOn);}
 function setInkTool(t){inkTool=t;document.querySelectorAll(".inktool").forEach(b=>b.classList.toggle("active",b.dataset.tool===t));}
-function inkSyncPersistBtn(){const b=$("#inkpersistbtn");if(b)b.textContent=st.inkPersist?"на слайд: хранить":"на слайд: очищать";}
+function inkSyncPersistBtn(){const b=$("#inkpersistbtn");if(!b)return;
+  // Две строки: сверху что настраиваем, снизу текущее значение. Одной строкой
+  // «на слайд: очищать» читалось как действие, а это переключатель.
+  b.innerHTML='<i>при смене слайда</i><b>'+(st.inkPersist?"хранить":"очищать")+'</b>';
+  b.title="что делать со штрихами при переходе на другой слайд";}
 function ptSegDist(p,a,b){const dx=b.nx-a.nx,dy=b.ny-a.ny,l2=dx*dx+dy*dy;let t=l2?((p.nx-a.nx)*dx+(p.ny-a.ny)*dy)/l2:0;t=Math.max(0,Math.min(1,t));const cx=a.nx+t*dx,cy=a.ny+t*dy;return Math.hypot(p.nx-cx,p.ny-cy);}
 function inkStrokeHit(s,n){const TH=0.02;if(s.pts.length===1)return Math.hypot(n.nx-s.pts[0].nx,n.ny-s.pts[0].ny)<TH;for(let i=1;i<s.pts.length;i++)if(ptSegDist(n,s.pts[i-1],s.pts[i])<TH)return true;return false;}
 function inkEraseAt(n){const arr=inkStrokesFor(st.i);for(let i=arr.length-1;i>=0;i--){if(inkStrokeHit(arr[i],n)){inkSnapshot();arr.splice(i,1);return;}}}
