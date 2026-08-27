@@ -80,10 +80,11 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 /* Версия студии — под «ещё», в паддинге панели: место постоянное, высоты не
    отъедает, выделить и скопировать можно. Нужна, чтобы по скриншоту было
    видно, та ли версия у человека. */
-/* Переключатель судьбы штрихов — в две строки: подпись сверху, значение снизу. */
-#inkpersistbtn{line-height:1.15;padding:4px 10px;text-align:center;}
-#inkpersistbtn i{display:block;font-style:normal;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;}
-#inkpersistbtn b{display:block;font-weight:600;}
+/* Двухстрочная кнопка: сверху мелкая подпись, снизу значение или действие.
+   Так подписи вроде «при смене слайда: очищать» не растягивают панель в нитку. */
+.b2{line-height:1.15;padding:4px 10px;text-align:center;}
+.b2 i{display:block;font-style:normal;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;}
+.b2 b{display:block;font-weight:600;}
 #ver{position:absolute;right:13px;bottom:1px;font-size:9px;letter-spacing:.04em;color:#5f656e;pointer-events:auto;white-space:nowrap;}
 #verSetup{margin-top:14px;font-size:11px;color:#6f757e;text-align:center;}   /* именно группы, а не контейнеры: пустое место строки кликов не ловит */
 #barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-end;align-content:flex-end;flex:1;min-width:0;}
@@ -278,7 +279,7 @@ input[type=range]{width:90px;}
      <span class="inkswatch" id="inkcolors"></span>
      <span class="sld"><input id="inkw" type="range" min="1" max="16" step="1"><span class="scap">толщина</span></span>
      <span class="vdiv"></span>
-     <button id="inkpersistbtn" title="что делать со штрихами при смене слайда"></button></div>
+     <button id="inkpersistbtn" class="b2" title="что делать со штрихами при смене слайда"></button></div>
   <div class="grp rec" id="g-rec"><span class="cap">запись</span><span id="recDot"></span>
      <button id="recbtn">⏺ Запись</button>
      <button id="pausebtn" style="display:none" title="пауза/продолжить">⏸</button>
@@ -304,7 +305,7 @@ input[type=range]{width:90px;}
      <button id="savebtn" title="запомнить текущие настройки">💾</button>
      <button id="resetbtn" title="сброс: вернуть сохранённые или стандартные">↺</button>
      <span class="vdiv"></span>
-     <button id="grpreset" title="сброс положения блоков: вернуть все унесённые блоки в панель">⇱ по местам</button>
+     <button id="grpreset" class="b2" title="вернуть все унесённые блоки обратно в панель"><i>сброс</i><b>положения меню</b></button>
      <span class="vdiv"></span>
      <button id="hidebar" title="свернуть панель">⌄ свернуть</button>
      <span class="vdiv"></span>
@@ -325,7 +326,7 @@ const $ = s => document.querySelector(s);
 /* Подставляется скриптом stamp-version.py: дата публикации и первые семь
    символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
    был воспроизводим). */
-const STUDIO_VERSION="2026-08-27 · 66c89c1";
+const STUDIO_VERSION="2026-08-27 · 93a3a75";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
