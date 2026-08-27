@@ -76,7 +76,12 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
    Фон остался только у самих групп — как у мини-пульта, с блюром и тенью,
    чтобы кнопки читались поверх любого слайда. Клики панель пропускает сквозь
    себя (pointer-events), ловят их только группы. */
-#bar .grp{pointer-events:auto;}   /* именно группы, а не контейнеры: пустое место строки кликов не ловит */
+#bar .grp{pointer-events:auto;}
+/* Версия студии — под «ещё», в паддинге панели: место постоянное, высоты не
+   отъедает, выделить и скопировать можно. Нужна, чтобы по скриншоту было
+   видно, та ли версия у человека. */
+#ver{position:absolute;right:13px;bottom:1px;font-size:9px;letter-spacing:.04em;color:#5f656e;pointer-events:auto;white-space:nowrap;}
+#verSetup{margin-top:14px;font-size:11px;color:#6f757e;text-align:center;}   /* именно группы, а не контейнеры: пустое место строки кликов не ловит */
 #barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-end;align-content:flex-end;flex:1;min-width:0;}
 /* Порядок групп задаём всем сразу. Без этого те, кому order не назначен,
    получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
@@ -180,6 +185,7 @@ input[type=range]{width:90px;}
   <h1>🎬 BStudio</h1>
   <p class="sub">Укажи папку курса — или просто любую папку с картинками. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
   <div id="restoreBox" style="display:none"></div>
+  <div id="verSetup"></div>
   <button id="pickCourse" class="big">📁 Выбрать папку</button>
   <div id="lessonBox" style="display:none">
     <label>Урок</label>
@@ -275,6 +281,7 @@ input[type=range]{width:90px;}
      <span class="vdiv"></span>
      <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
   </div>
+  <span id="ver" title="версия студии: дата сборки и отпечаток файла"></span>
   <div id="barbottom">
   <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
   <div class="grp" id="g-more"><span class="cap">ещё</span>
@@ -299,6 +306,10 @@ input[type=range]{width:90px;}
 
 <script>
 const $ = s => document.querySelector(s);
+/* Подставляется скриптом stamp-version.py: дата публикации и первые семь
+   символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
+   был воспроизводим). */
+const STUDIO_VERSION="2026-08-27 · 6290674";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
@@ -1139,6 +1150,7 @@ function startStudio(){
   if(!started){ started=true; bindStudio(); bindGroupFolding(); requestAnimationFrame(loop); }
 }
 
+for(const id of ["#ver","#verSetup"]){ const el=$(id); if(el) el.textContent="версия "+STUDIO_VERSION; }
 bindSetup();
 </script>
 </body></html>
