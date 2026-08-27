@@ -71,7 +71,12 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
    задавала она, а #barleft со свёрнутыми ярлыками центрировался в этой высоте
    и всплывал над «слайдом» на пол-ярлыка. По нижнему краю всё сходится всегда. */
 #bar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:none;flex-direction:column;align-items:stretch;gap:8px;
-  padding:12px 12px;background:linear-gradient(0deg,#0a0b0e,rgba(10,11,14,.9));border-top:1px solid #20232c;}
+  padding:10px 12px;background:none;border-top:0;pointer-events:none;}
+/* Подложки во всю ширину больше нет: она перекрывала низ слайда целой полосой.
+   Фон остался только у самих групп — как у мини-пульта, с блюром и тенью,
+   чтобы кнопки читались поверх любого слайда. Клики панель пропускает сквозь
+   себя (pointer-events), ловят их только группы. */
+#bar .grp{pointer-events:auto;}   /* именно группы, а не контейнеры: пустое место строки кликов не ловит */
 #barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-end;align-content:flex-end;flex:1;min-width:0;}
 /* Порядок групп задаём всем сразу. Без этого те, кому order не назначен,
    получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
@@ -100,8 +105,18 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 #g-sufl.folded{flex-basis:auto;}
 button{background:var(--btn);color:var(--txt);border:0;border-radius:9px;padding:9px 12px;font-size:15px;cursor:pointer;min-height:40px;}
 button:hover{background:var(--btn2);} button.active{background:var(--acc);color:#111;}
-.grp{display:flex;gap:5px;align-items:center;flex-wrap:wrap;row-gap:6px;background:#161a23;border:1px solid #2a2e39;border-radius:13px;padding:6px 10px;}
-.grp.rec{background:#1d1517;border-color:#5e2c27;}
+/* Группы переносятся целиком, как блоки, но внутри себя не рвутся: раньше
+   очередная кнопка не влезала в остаток строки, уезжала вниз, а перед разрывом
+   оставалась дырка в полполосы. Кто не влез — тянется и ужимается за счёт
+   слайдера, а не ломается пополам. */
+.grp{display:flex;gap:5px;align-items:center;flex-wrap:nowrap;min-width:0;overflow-x:auto;scrollbar-width:none;background:rgba(22,26,35,.92);backdrop-filter:blur(6px);border:1px solid #2a2e39;border-radius:13px;padding:6px 10px;box-shadow:0 8px 26px rgba(0,0,0,.45);}
+.grp::-webkit-scrollbar{display:none;}
+/* Ужимается в первую очередь слайдер: он тянущийся, кнопки — нет. */
+.grp .sld{flex:0 1 auto;min-width:0;}
+.grp .sld input[type=range]{width:100%;min-width:54px;}
+/* Узкое окно — там уже честно не влезает, возвращаем перенос внутри групп. */
+@media(max-width:1000px){ .grp{flex-wrap:wrap;row-gap:6px;overflow-x:visible;} }
+.grp.rec{background:rgba(29,21,23,.93);border-color:#5e2c27;}
 .cap{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#8a8f99;padding-right:8px;margin-right:3px;border-right:1px solid #2c3039;white-space:nowrap;}
 .grp.rec .cap{color:#e08a80;border-color:#5e2c27;}
 .cap.captog{cursor:pointer;border-right:0;padding:3px 8px;margin-right:5px;border-radius:7px;background:rgba(55,210,122,.20);color:#bfe8cf;transition:background .15s,color .15s;}
@@ -153,8 +168,10 @@ input[type=range]{width:90px;}
   button{padding:7px 9px;font-size:13.5px;min-height:34px;border-radius:8px;}
   .grp{gap:4px;padding:5px 8px;border-radius:11px;}
   .cap{font-size:9px;padding-right:6px;margin-right:2px;}
-  .lab{font-size:11px;}
+  .lab{font-size:11px;padding:0 2px;}
+  .vdiv{margin:0 1px;}
   select{max-width:150px;}
+
 }
 @media(max-width:760px){ #promptInner{font-size:30px;} button{padding:8px 10px;font-size:14px;} .lab{display:none;} }
 </style></head>
