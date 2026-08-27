@@ -83,10 +83,9 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
    суфлёром и камерой, а строки — в дырках. */
 #g-sufl{flex-basis:100%;order:0;}
 #g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;}
-/* Свёрнутая группа уезжает в конец очереди: иначе ярлык «суфлёр» с order:0
-   висел один в верхней строке, пока развёрнутые группы переносились под него.
-   Селекторы с id — иначе правила выше перебьют по специфичности. */
-#g-sufl.folded,#g-cam.folded,#g-rec.folded,#g-ink.folded{order:20;}
+/* Свёрнутые группы переезжают в нижнюю строку (см. foldGroup), и там порядок
+   тот же: суфлёр, камера, запись, рисование — слева направо за «слайдом». */
+#g-slide{order:0;} #g-more{order:99;}
 /* «Ещё» лежит не в #barleft, а рядом с ним, поэтому в общий поток и порядок
    групп не входит. Прижимаем его к правому нижнему углу панели: при
    align-items:center он центрировался по высоте всех строк и болтался
@@ -1031,6 +1030,14 @@ window.addEventListener("beforeunload",e=>{if(recording){e.preventDefault();e.re
 function foldGroup(id, folded, remember){
   const g=$("#"+id); if(!g) return;
   g.classList.toggle("folded", !!folded);
+  // Свёрнутые ярлыки собираются в нижней строке, друг за другом сразу за
+  // «слайдом»: искать свёрнутое меню в верхних строках — то ещё удовольствие.
+  // «Слайд» и «ещё» и так живут там, их не двигаем.
+  if(id!=="g-slide" && id!=="g-more"){
+    const bottom=$("#barbottom"), top=$("#barleft"), more=$("#g-more");
+    if(folded){ if(g.parentNode!==bottom) bottom.insertBefore(g, more); }
+    else if(g.parentNode!==top) top.appendChild(g);   // порядок внутри задаёт CSS order
+  }
   if(remember!==false) save("fold:"+id, !!folded);
 }
 function bindGroupFolding(){
