@@ -86,7 +86,11 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 /* Порядок групп задаём всем сразу. Без этого те, кому order не назначен,
    получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
    суфлёром и камерой, а строки — в дырках. */
-#g-sufl{flex-basis:100%;order:0;}
+/* Ширина по содержимому, а не 100%: строка во всю ширину имела смысл, пока
+   группа рвалась внутри себя на две. Теперь не рвётся — и растянутый блок
+   означал только хвост пустоты справа. Строку она и так занимает почти всю,
+   а соседи переносятся сами. */
+#g-sufl{order:0;}
 #g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;}
 /* Свёрнутые группы переезжают в нижнюю строку (см. foldGroup), и там порядок
    тот же: суфлёр, камера, запись, рисование — слева направо за «слайдом». */
@@ -105,8 +109,7 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 /* Свёрнутая группа не занимает целую строку — иначе сворачивать суфлёр
    бессмысленно: строка остаётся. Селектор с id, потому что #g-sufl задаёт
    flex-basis:100% и по специфичности перебивает голый класс. */
-.grp.folded{flex-basis:auto;}
-#g-sufl.folded{flex-basis:auto;}
+
 button{background:var(--btn);color:var(--txt);border:0;border-radius:9px;padding:9px 12px;font-size:15px;cursor:pointer;min-height:40px;}
 button:hover{background:var(--btn2);} button.active{background:var(--acc);color:#111;}
 /* Группы переносятся целиком, как блоки, но внутри себя не рвутся: раньше
@@ -309,7 +312,7 @@ const $ = s => document.querySelector(s);
 /* Подставляется скриптом stamp-version.py: дата публикации и первые семь
    символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
    был воспроизводим). */
-const STUDIO_VERSION="2026-08-27 · 6290674";
+const STUDIO_VERSION="2026-08-27 · 4ca81d2";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
