@@ -132,7 +132,10 @@ button:hover{background:var(--btn2);} button.active{background:var(--acc);color:
 /* Групп в панели накопилось много: на узком экране они занимают несколько строк
    и перекрывают слайд. Клик по названию сворачивает группу до одного ярлыка —
    строка освобождается, а что там внутри, видно по названию. */
-.cap{cursor:pointer;user-select:none;}
+.cap{cursor:grab;user-select:none;touch-action:none;}
+.grp.floating{position:fixed;z-index:30;margin:0;}
+.grp.dragging{opacity:.75;outline:1px dashed #7a818c;outline-offset:2px;}
+.grp.dragging .cap{cursor:grabbing;}
 .cap::after{content:"▾";margin-left:6px;font-size:9px;opacity:.5;}
 .grp.folded .cap::after{content:"▸";}
 .grp.folded>*:not(.cap){display:none;}
@@ -301,6 +304,8 @@ input[type=range]{width:90px;}
      <button id="savebtn" title="запомнить текущие настройки">💾</button>
      <button id="resetbtn" title="сброс: вернуть сохранённые или стандартные">↺</button>
      <span class="vdiv"></span>
+     <button id="grpreset" title="сброс положения блоков: вернуть все унесённые блоки в панель">⇱ по местам</button>
+     <span class="vdiv"></span>
      <button id="hidebar" title="свернуть панель">⌄ свернуть</button>
      <span class="vdiv"></span>
      <button id="full" title="полный экран">⛶</button></div>
@@ -320,7 +325,7 @@ const $ = s => document.querySelector(s);
 /* Подставляется скриптом stamp-version.py: дата публикации и первые семь
    символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
    был воспроизводим). */
-const STUDIO_VERSION="2026-08-27 · 96be468";
+const STUDIO_VERSION="2026-08-27 · 66c89c1";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
@@ -1066,6 +1071,69 @@ function foldGroup(id, folded, remember){
   }
   if(remember!==false) save("fold:"+id, !!folded);
 }
+/* Свободное перемещение блоков. Тянем за название — блок отрывается от панели
+   и живёт по координатам поверх слайда, пока его не вернут на место кнопкой
+   «⇱ по местам» в группе «ещё». Координаты помнятся по каждому блоку.
+   «Ещё» не двигается: это якорь, из которого всё возвращается обратно. */
+const GRP_MOVABLE=["g-slide","g-sufl","g-cam","g-rec","g-ink"];
+
+function clampToView(g,x,y){
+  const w=g.offsetWidth||140, h=g.offsetHeight||36;
+  return { x:Math.round(Math.max(4,Math.min(x, window.innerWidth-w-4))),
+           y:Math.round(Math.max(4,Math.min(y, window.innerHeight-h-4))) };
+}
+function floatGrp(g,x,y,remember){
+  const p=clampToView(g,x,y);
+  g.classList.add("floating");
+  g.style.left=p.x+"px"; g.style.top=p.y+"px";
+  if(remember!==false) save("pos:"+g.id,p);
+}
+function dockGrp(g,remember){
+  g.classList.remove("floating");
+  g.style.left=""; g.style.top="";
+  if(remember!==false) save("pos:"+g.id,null);
+}
+function restoreGrpPositions(){
+  for(const id of GRP_MOVABLE){
+    const g=$("#"+id), p=LS("pos:"+id,null);
+    if(g && p && typeof p.x==="number") floatGrp(g,p.x,p.y,false);
+  }
+}
+function dockAllGrps(){ for(const id of GRP_MOVABLE){ const g=$("#"+id); if(g) dockGrp(g); } }
+// Окно уменьшили — блок мог остаться за краем. Возвращаем в видимую часть.
+window.addEventListener("resize",()=>{
+  for(const id of GRP_MOVABLE){
+    const g=$("#"+id);
+    if(g && g.classList.contains("floating")) floatGrp(g, parseInt(g.style.left,10)||0, parseInt(g.style.top,10)||0);
+  }
+});
+
+/* Тянем за название: сдвинул больше пяти пикселей — это перетаскивание,
+   отпустил на месте — обычный клик, то есть свернуть. Один и тот же элемент
+   отвечает за оба жеста, поэтому и порог. */
+function bindGrpDrag(g, cap){
+  cap.addEventListener("pointerdown", e=>{
+    if(e.button) return;
+    const r=g.getBoundingClientRect();
+    const dx=e.clientX-r.left, dy=e.clientY-r.top;
+    const sx=e.clientX, sy=e.clientY; let moved=false;
+    try{ cap.setPointerCapture(e.pointerId); }catch(x){}
+    const move=ev=>{
+      if(!moved && Math.hypot(ev.clientX-sx, ev.clientY-sy)<5) return;
+      if(!moved){ moved=true; g.classList.add("dragging"); }
+      floatGrp(g, ev.clientX-dx, ev.clientY-dy, false);
+    };
+    const up=()=>{
+      cap.removeEventListener("pointermove",move); cap.removeEventListener("pointerup",up);
+      try{ cap.releasePointerCapture(e.pointerId); }catch(x){}
+      g.classList.remove("dragging");
+      if(moved) save("pos:"+g.id, {x:parseInt(g.style.left,10)||0, y:parseInt(g.style.top,10)||0});
+      else foldGroup(g.id, !g.classList.contains("folded"));
+    };
+    cap.addEventListener("pointermove",move); cap.addEventListener("pointerup",up);
+  });
+}
+
 /* То же самое для ползунков внутри групп. Ключ — id самого input'а, чтобы
    состояние не путалось между «сдвигом ↔» и «сдвигом ↕». */
 function bindSliderFolding(){
@@ -1083,10 +1151,13 @@ function bindSliderFolding(){
 function bindGroupFolding(){
   document.querySelectorAll("#bar .grp").forEach(g=>{
     const cap=g.querySelector(".cap"); if(!cap || !g.id) return;
-    cap.title="клик — свернуть или развернуть эту группу";
+    cap.title=(g.id==="g-more") ? "клик — свернуть или развернуть эту группу"
+                                : "клик — свернуть или развернуть, перетащить — унести блок куда угодно";
     foldGroup(g.id, LS("fold:"+g.id,false), false);
-    cap.onclick=()=>foldGroup(g.id, !g.classList.contains("folded"));
+    if(g.id==="g-more") cap.onclick=()=>foldGroup(g.id, !g.classList.contains("folded"));
+    else bindGrpDrag(g, cap);
   });
+  restoreGrpPositions();
 }
 
 function bindStudio(){
@@ -1128,6 +1199,7 @@ function bindStudio(){
   $("#pwp").onclick=()=>{st.promptW=Math.min(1,+(st.promptW+0.05).toFixed(2));save("promptW",st.promptW);applyPromptBox();};
   $("#phm").onclick=()=>{st.promptH=Math.max(0.06,+(st.promptH-0.04).toFixed(2));save("promptH",st.promptH);applyPromptBox();};
   $("#php").onclick=()=>{st.promptH=Math.min(0.78,+(st.promptH+0.04).toFixed(2));save("promptH",st.promptH);applyPromptBox();};
+  $("#grpreset").onclick=()=>{ dockAllGrps(); flashBtn($("#grpreset")); };
   $("#hidebar").onclick=hidePanel;
   $("#m_expand").onclick=showPanel;
   $("#m_prev").onclick=()=>showSlide(st.i-1);
