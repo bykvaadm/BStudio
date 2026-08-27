@@ -66,23 +66,33 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 #promptInner code{font-family:ui-monospace,Menlo,monospace;background:rgba(255,255,255,.1);padding:1px 6px;border-radius:5px;font-size:.9em;}
 #promptInner .p{color:var(--acc);font-weight:800;padding:0 .25em;}
 #promptInner .muted{color:#7e838c;font-style:italic;font-weight:500;}
-#bar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:none;gap:11px;align-items:center;flex-wrap:nowrap;
+/* align-items:flex-end, а не center: «слайд» и «ещё» прижаты к низу через
+   align-self, и стоило одной из групп остаться развёрнутой, как высоту панели
+   задавала она, а #barleft со свёрнутыми ярлыками центрировался в этой высоте
+   и всплывал над «слайдом» на пол-ярлыка. По нижнему краю всё сходится всегда. */
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:none;flex-direction:column;align-items:stretch;gap:8px;
   padding:12px 12px;background:linear-gradient(0deg,#0a0b0e,rgba(10,11,14,.9));border-top:1px solid #20232c;}
-#barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-start;align-content:flex-start;flex:1;min-width:0;}
+#barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-end;align-content:flex-end;flex:1;min-width:0;}
 /* Порядок групп задаём всем сразу. Без этого те, кому order не назначен,
    получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
    суфлёром и камерой, а строки — в дырках. */
 #g-sufl{flex-basis:100%;order:0;}
 #g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;}
+/* Свёрнутая группа уезжает в конец очереди: иначе ярлык «суфлёр» с order:0
+   висел один в верхней строке, пока развёрнутые группы переносились под него.
+   Селекторы с id — иначе правила выше перебьют по специфичности. */
+#g-sufl.folded,#g-cam.folded,#g-rec.folded,#g-ink.folded{order:20;}
 /* «Ещё» лежит не в #barleft, а рядом с ним, поэтому в общий поток и порядок
    групп не входит. Прижимаем его к правому нижнему углу панели: при
    align-items:center он центрировался по высоте всех строк и болтался
    где-то посередине. */
-/* «Слайд» и «ещё» вынесены из переносимого потока и прибиты к нижним углам
-   панели: листать слайды и жать «свернуть» нужно всегда, и эти кнопки не
-   должны прыгать по строкам, когда развернули какую-нибудь группу. Между ними
-   — #barleft с остальными группами, он и переносится. */
-#g-slide,#g-more{align-self:flex-end;flex:0 0 auto;}
+/* Панель в два яруса. Сверху #barleft — переносимые группы во всю ширину
+   (раньше они были зажаты между «слайдом» и «ещё» и все строки съезжали вправо
+   на ширину «слайда»). Снизу #barbottom — «слайд» слева, «ещё» справа: листать
+   слайды и сворачивать панель нужно всегда, и эти кнопки не должны прыгать по
+   строкам, когда что-нибудь развернули. */
+#barbottom{display:flex;align-items:flex-end;gap:9px;}
+#barbottom #g-more{margin-left:auto;}
 /* Свёрнутая группа не занимает целую строку — иначе сворачивать суфлёр
    бессмысленно: строка остаётся. Селектор с id, потому что #g-sufl задаёт
    flex-basis:100% и по специфичности перебивает голый класс. */
@@ -183,7 +193,6 @@ input[type=range]{width:90px;}
 </div>
 
 <div id="bar">
-  <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="back" title="к выбору урока">☰</button><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
   <div id="barleft">
   <div class="grp" id="g-sufl"><span class="cap">суфлёр</span><button id="suflvis" title="показать / скрыть суфлёр">👁</button><button id="play">▶</button>
      <span class="vdiv"></span>
@@ -250,13 +259,18 @@ input[type=range]{width:90px;}
      <span class="vdiv"></span>
      <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
   </div>
+  <div id="barbottom">
+  <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
   <div class="grp" id="g-more"><span class="cap">ещё</span>
+     <button id="back" title="к выбору урока">☰</button>
+     <span class="vdiv"></span>
      <button id="savebtn" title="запомнить текущие настройки">💾</button>
      <button id="resetbtn" title="сброс: вернуть сохранённые или стандартные">↺</button>
      <span class="vdiv"></span>
      <button id="hidebar" title="свернуть панель">⌄ свернуть</button>
      <span class="vdiv"></span>
      <button id="full" title="полный экран">⛶</button></div>
+  </div>
 </div>
 
 <div id="minibar">
