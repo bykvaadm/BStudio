@@ -145,6 +145,14 @@ button:hover{background:var(--btn2);} button.active{background:var(--acc);color:
 .lab{font-size:12px;color:#9aa0a8;padding:0 4px;}
 .sld{display:inline-flex;flex-direction:column;align-items:center;gap:1px;vertical-align:middle;}
 .sld input[type=range]{width:84px;}
+/* Ползунки тоже сворачиваются: клик по подписи — остаётся одно слово.
+   Семь ползунков («размер», «зум», два «сдвига», «фон», «миниатюра»,
+   «толщина») занимают вместе больше двухсот пикселей, а трогают их редко. */
+.sld .scap{cursor:pointer;user-select:none;}
+.sld .scap::after{content:"▾";font-size:8px;margin-left:4px;opacity:.45;}
+.sld.folded .scap::after{content:"▸";}
+.sld.folded input[type=range]{display:none;}
+.sld.folded .scap{color:#9aa0a8;}
 .sld .scap{font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;line-height:1;white-space:nowrap;}
 #slabel{font-size:13px;color:#c7cbd2;min-width:64px;text-align:center;}
 #recbtn{background:#c0392b;color:#fff;font-weight:700;}
@@ -312,7 +320,7 @@ const $ = s => document.querySelector(s);
 /* Подставляется скриптом stamp-version.py: дата публикации и первые семь
    символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
    был воспроизводим). */
-const STUDIO_VERSION="2026-08-27 · 331130f";
+const STUDIO_VERSION="2026-08-27 · 96be468";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
@@ -1058,6 +1066,20 @@ function foldGroup(id, folded, remember){
   }
   if(remember!==false) save("fold:"+id, !!folded);
 }
+/* То же самое для ползунков внутри групп. Ключ — id самого input'а, чтобы
+   состояние не путалось между «сдвигом ↔» и «сдвигом ↕». */
+function bindSliderFolding(){
+  document.querySelectorAll("#bar .sld").forEach(sld=>{
+    const inp=sld.querySelector("input[type=range]"), cap=sld.querySelector(".scap");
+    if(!inp || !cap || !inp.id) return;
+    const key="sfold:"+inp.id;
+    const set=(f,remember)=>{ sld.classList.toggle("folded",!!f); if(remember!==false) save(key,!!f); };
+    set(LS(key,false), false);
+    cap.title="клик — свернуть или развернуть ползунок";
+    cap.onclick=()=>set(!sld.classList.contains("folded"));
+  });
+}
+
 function bindGroupFolding(){
   document.querySelectorAll("#bar .grp").forEach(g=>{
     const cap=g.querySelector(".cap"); if(!cap || !g.id) return;
@@ -1154,7 +1176,7 @@ function startStudio(){
   const ll=$("#laserlive");if(ll)ll.style.display="block";
   applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
-  if(!started){ started=true; bindStudio(); bindGroupFolding(); requestAnimationFrame(loop); }
+  if(!started){ started=true; bindStudio(); bindGroupFolding(); bindSliderFolding(); requestAnimationFrame(loop); }
 }
 
 for(const id of ["#ver","#verSetup"]){ const el=$(id); if(el) el.textContent="версия "+STUDIO_VERSION; }
