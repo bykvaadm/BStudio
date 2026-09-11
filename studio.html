@@ -101,11 +101,17 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
    группа рвалась внутри себя на две. Теперь не рвётся — и растянутый блок
    означал только хвост пустоты справа. Строку она и так занимает почти всю,
    а соседи переносятся сами. */
-#g-sufl{order:0;}
-#g-cam{order:2;} #g-rec{order:3;} #g-ink{order:4;}
-/* Свёрнутые группы переезжают в нижнюю строку (см. foldGroup), и там порядок
-   тот же: суфлёр, камера, запись, рисование — слева направо за «слайдом». */
-#g-slide{order:0;} #g-more{order:99;}
+/* Одна нумерация на оба контейнера. В #barleft (он переносится) выходит
+   сверху вниз: рисование, разрыв, камера. В #barbottom, где переноса нет:
+   слайд, запись, свёрнутые ярлыки, «ещё» справа. */
+#g-slide{order:0;} #g-rec{order:1;} #g-sufl{order:2;} #g-ink{order:3;}
+.brk{order:4;} #g-cam{order:5;} #g-more{order:99;}
+/* Пустой разрыв строки: во flex это единственный способ сказать «отсюда новая
+   строка», не растягивая сами блоки на всю ширину. */
+.brk{flex-basis:100%;height:0;margin:0;padding:0;border:0;}
+/* Экран поменьше — разрывы убираем, группы паковаться начинают сами: плотная
+   строка лучше предписанной раскладки, съевшей пол-слайда. */
+@media(max-width:1500px){ .brk{display:none;} }
 /* «Ещё» лежит не в #barleft, а рядом с ним, поэтому в общий поток и порядок
    групп не входит. Прижимаем его к правому нижнему углу панели: при
    align-items:center он центрировался по высоте всех строк и болтался
@@ -160,9 +166,14 @@ button:hover{background:var(--btn2);} button.active{background:var(--acc);color:
    «толщина») занимают вместе больше двухсот пикселей, а трогают их редко. */
 .sld .scap{cursor:pointer;user-select:none;}
 .sld .scap::after{content:"▾";font-size:8px;margin-left:4px;opacity:.45;}
-.sld.folded .scap::after{content:"▸";}
 .sld.folded input[type=range]{display:none;}
-.sld.folded .scap{color:#9aa0a8;}
+/* Свёрнутый ползунок — кнопка, а не подпись: иначе не видно, что на него надо
+   нажать. Форма и высота как у соседних кнопок, чтобы строка читалась одним
+   рядом, а не подписями вперемешку с кнопками. */
+.sld.folded .scap{background:var(--btn);color:var(--txt);border-radius:9px;padding:0 12px;min-height:40px;
+  display:inline-flex;align-items:center;gap:7px;font-size:13px;text-transform:none;letter-spacing:0;}
+.sld.folded .scap:hover{background:var(--btn2);}
+.sld.folded .scap::after{content:"▸";font-size:10px;opacity:.55;margin-left:0;}
 .sld .scap{font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;line-height:1;white-space:nowrap;}
 #slabel{font-size:13px;color:#c7cbd2;min-width:64px;text-align:center;}
 #recbtn{background:#c0392b;color:#fff;font-weight:700;}
@@ -294,6 +305,9 @@ input[type=range]{width:90px;}
      <span class="sld"><input id="inkw" type="range" min="1" max="16" step="1"><span class="scap">толщина</span></span>
      <span class="vdiv"></span>
      <button id="inkpersistbtn" class="b2" title="что делать со штрихами при смене слайда"></button></div>
+  <i class="brk"></i>
+  </div>
+  <div id="barbottom">
   <div class="grp rec" id="g-rec"><span class="cap">запись</span><span id="recDot"></span>
      <button id="recbtn">⏺ Запись</button>
      <button id="pausebtn" style="display:none" title="пауза/продолжить">⏸</button>
@@ -311,8 +325,6 @@ input[type=range]{width:90px;}
      <button id="resbtn" title="размер записи">1080p</button>
      <span class="vdiv"></span>
      <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
-  </div>
-  <div id="barbottom">
   <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
   <div class="grp" id="g-more"><span class="cap">ещё</span>
      <button id="back" title="к выбору урока">☰</button>
@@ -1559,7 +1571,7 @@ function foldGroup(id, folded, remember){
   // Свёрнутые ярлыки собираются в нижней строке, друг за другом сразу за
   // «слайдом»: искать свёрнутое меню в верхних строках — то ещё удовольствие.
   // «Слайд» и «ещё» и так живут там, их не двигаем.
-  if(id!=="g-slide" && id!=="g-more"){
+  if(id!=="g-slide" && id!=="g-more" && id!=="g-rec"){
     const bottom=$("#barbottom"), top=$("#barleft"), more=$("#g-more");
     if(folded){ if(g.parentNode!==bottom) bottom.insertBefore(g, more); }
     else if(g.parentNode!==top) top.appendChild(g);   // порядок внутри задаёт CSS order
@@ -1637,7 +1649,7 @@ function bindSliderFolding(){
     if(!inp || !cap || !inp.id) return;
     const key="sfold:"+inp.id;
     const set=(f,remember)=>{ sld.classList.toggle("folded",!!f); if(remember!==false) save(key,!!f); };
-    set(LS(key,false), false);
+    set(LS(key,true), false);   // при первом входе свёрнут
     cap.title="клик — свернуть или развернуть ползунок";
     cap.onclick=()=>set(!sld.classList.contains("folded"));
   });
@@ -1648,7 +1660,9 @@ function bindGroupFolding(){
     const cap=g.querySelector(".cap"); if(!cap || !g.id) return;
     cap.title=(g.id==="g-more") ? "клик — свернуть или развернуть эту группу"
                                 : "клик — свернуть или развернуть, перетащить — унести блок куда угодно";
-    foldGroup(g.id, LS("fold:"+g.id,false), false);
+    /* При первом входе суфлёр свёрнут: его ползунки настраивают один раз,
+       а места он занимает больше всех. Дальше — как человек оставил. */
+    foldGroup(g.id, LS("fold:"+g.id, g.id==="g-sufl"), false);
     if(g.id==="g-more") cap.onclick=()=>foldGroup(g.id, !g.classList.contains("folded"));
     else bindGrpDrag(g, cap);
   });
