@@ -13,6 +13,13 @@ html,body{margin:0;height:100%;background:#000;color:var(--txt);font-family:-app
 #setup label{display:block;margin:14px 0 6px;color:#9aa0a8;font-size:13px;}
 #setup select{width:100%;padding:12px;border-radius:11px;background:#0e0f14;color:var(--txt);border:1px solid #2b2e38;font-size:15px;}
 button.big{width:100%;padding:14px;border:0;border-radius:12px;background:var(--btn);color:var(--txt);font-size:16px;cursor:pointer;margin-top:14px;}
+.seg{display:flex;gap:6px;background:#0e0f14;border:1px solid #2b2e38;border-radius:12px;padding:5px;}
+.seg button{flex:1;padding:10px 8px;border:0;border-radius:8px;background:transparent;color:#9aa0a8;font-size:14px;line-height:1.25;cursor:pointer;}
+.seg button b{display:block;font-size:15px;font-weight:700;}
+.seg button i{display:block;font-style:normal;font-size:11px;opacity:.75;margin-top:2px;}
+.seg button:hover:not(:disabled){background:#191b23;color:var(--txt);}
+.seg button.on{background:var(--btn2);color:var(--txt);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);}
+.seg button:disabled{opacity:.35;cursor:not-allowed;}
 button.big:hover{background:var(--btn2);}
 button.go{background:var(--acc);color:#111;font-weight:700;}
 #restoreBox button{background:#1f2733;}
@@ -166,6 +173,8 @@ input[type=range]{width:90px;}
 .vu{display:inline-block;width:48px;height:8px;border-radius:5px;background:#23252e;overflow:hidden;vertical-align:middle;}
 .vu>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2e8b45,#f5c518,#ff3b30);transition:width .05s linear;}
 #micwarn{display:none;color:#ff7a6e;font-size:12px;font-weight:700;padding:0 4px;}
+#seekwarn{display:none;color:#9aa0a8;font-size:12px;font-weight:700;padding:0 4px;cursor:help;}
+#fmtwarn{display:none;margin:12px 0 0;padding:10px 12px;border-radius:8px;background:rgba(120,130,145,.14);border:1px solid rgba(120,130,145,.4);color:#aab2bf;font-size:13px;line-height:1.45;text-align:left;}
 #savemsg{display:none;color:#7a8290;font-size:12px;padding:0 4px;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .sp{flex:1;}
 #rec{display:none;}
@@ -200,6 +209,12 @@ input[type=range]{width:90px;}
   <h1>🎬 BStudio</h1>
   <p class="sub">Укажи папку курса — или просто любую папку с картинками. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
   <div id="restoreBox" style="display:none"></div>
+  <label>Формат записи</label>
+  <div class="seg">
+    <button id="fmtMp4" type="button"><b>MP4</b><i>перематывается, играется везде</i></button>
+    <button id="fmtWebm" type="button"><b>WebM</b><i>открытый формат, VP9 + Opus</i></button>
+  </div>
+  <div id="fmtwarn"></div>
   <button id="pickCourse" class="big">📁 Выбрать папку</button>
   <div id="lessonBox" style="display:none">
     <label>Урок</label>
@@ -290,6 +305,7 @@ input[type=range]{width:90px;}
      <span class="vdiv"></span>
      <span class="lab" title="уровень микрофона">🎙</span><span class="vu"><i id="vubar"></i></span>
      <span id="micwarn" title="нет звука!">⚠ нет звука</span>
+     <span id="seekwarn">WebM</span>
      <select id="micsel" title="выбор микрофона"></select>
      <span class="vdiv"></span>
      <button id="resbtn" title="размер записи">1080p</button>
@@ -736,6 +752,10 @@ async function startSelected(){
   }catch(e){ $("#setupMsg").textContent=e.message; $("#setupMsg").className="msg err"; }
 }
 function bindSetup(){
+  applyFmt();
+  const setFmt=v=>{ st.fmt=v; save("fmt",v); applyFmt(); };
+  $("#fmtMp4").onclick=()=>setFmt("mp4");
+  $("#fmtWebm").onclick=()=>setFmt("webm");
   if(!window.showDirectoryPicker){
     $("#setupMsg").innerHTML="Нужен Chrome (или Edge): в этом браузере нет File System Access API."; $("#setupMsg").className="msg err";
     $("#pickCourse").disabled=true;
@@ -766,7 +786,7 @@ let st={ i:0, playing:false, speed:7, tempo:LS("tempo",135), font:LS("font",34),
   res:LS("res","1080"), burnIn:LS("burnIn",false), promptPos:LS("promptPos","top"), opacity:LS("opacity",0.78),
   promptW:LS("promptW",0.28), promptH:LS("promptH",0.18), autoScroll:LS("autoScroll",false),
   autoAdvance:LS("autoAdvance",false), camDeviceId:LS("camDeviceId",""), micDeviceId:LS("micDeviceId",""), thumbOpacity:LS("thumbOpacity",0.3), camZoom:LS("camZoom",1), camPanX:LS("camPanX",0), camPanY:LS("camPanY",0), camShape:LS("camShape","rect"),
-  camHide:false,
+  camHide:false, fmt:LS("fmt","mp4"),
   inkPersist:LS("inkPersist",false), inkColor:LS("inkColor","#ff4d4d"), inkWidth:LS("inkWidth",4) };
 let curImg=new Image();
 const CAMPOS={tl:["l","t"],tc:["c","t"],tr:["r","t"],mr:["r","m"],br:["r","b"],bc:["c","b"],bl:["l","b"],ml:["l","m"]};
@@ -835,7 +855,7 @@ async function saveCamToScript(){
   }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
 }
 
-const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:0.28,promptH:0.18,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
+const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:0.28,promptH:0.18,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",fmt:"mp4",inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
 const SET_KEYS=Object.keys(DEFAULTS);
 function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;syncResBtn();$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;
   const iw=$("#inkw");if(iw)iw.value=st.inkWidth;
@@ -1052,7 +1072,314 @@ function drawBurnIn(ctx,cw,ch){
   ctx.fillStyle="#fff";ctx.textBaseline="top";
   for(let k=0;k<visN&&start+k<lines.length;k++) ctx.fillText(lines[start+k],pad,ch-bandH+pad*0.5+k*lh);
 }
-function pickMime(){for(const m of ["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"])if(MediaRecorder.isTypeSupported(m))return m;return "";}
+/* Оглавление для WebM, которого MediaRecorder не пишет.
+
+   MediaRecorder отдаёт живой поток: Segment неизвестного размера, в Info нет
+   Duration, в конце нет Cues. Файл играется, но плеер не знает ни длительности,
+   ни куда прыгать, и показывает Infinity вместо шкалы.
+
+   Здесь поток проходит через разбор: заголовок (у Chrome это ~190 байт до
+   первого кластера) придерживается, в Info вставляется Duration фиксированной
+   ширины, перед ним — SeekHead со ссылкой на Cues. Дальше кластеры уходят на
+   диск как есть, а мы запоминаем их позиции и таймстемпы. На стопе дописываем
+   Cues и точечно перезаписываем два зарезервированных числа.
+
+   Разбор честный: у всех детей кластера размер известен, поэтому границы
+   находятся обходом элементов, а не поиском сигнатур в сжатых данных.
+
+   Любая неожиданность — и мы выключаемся (ok=false), отдавая байты нетронутыми.
+   Лучше файл без перемотки, как раньше, чем испорченная лекция. */
+
+const ID = { EBML:0x1A45DFA3, SEGMENT:0x18538067, INFO:0x1549A966, TRACKS:0x1654AE6B,
+             CLUSTER:0x1F43B675, CUES:0x1C53BB6B, SEEKHEAD:0x114D9B74, VOID:0xEC,
+             TIMESTAMP:0xE7, SIMPLEBLOCK:0xA3, BLOCKGROUP:0xA0, BLOCK:0xA1, REFBLOCK:0xFB, DURATION:0x4489,
+             TIMESTAMPSCALE:0x2AD7B1, TRACKENTRY:0xAE, TRACKNUMBER:0xD7, TRACKTYPE:0x83 };
+
+function lenOf(first){ // ширина VINT по старшему байту
+  for(let i=0;i<8;i++) if(first & (0x80>>i)) return i+1;
+  return 0;
+}
+function readId(b,p){ const l=lenOf(b[p]); if(!l||p+l>b.length) return null;
+  let v=0; for(let i=0;i<l;i++) v=v*256+b[p+i]; return {id:v,next:p+l}; }
+function readSize(b,p){ const l=lenOf(b[p]); if(!l||p+l>b.length) return null;
+  let v=b[p] & (0xFF>>l), unknown=(v===(0xFF>>l)?1:0);
+  for(let i=1;i<l;i++){ v=v*256+b[p+i]; if(b[p+i]!==0xFF) unknown=0; }
+  return {size:v,next:p+l,unknown:!!unknown&&l>0}; }
+
+function vint(value){ // минимальная кодировка размера
+  for(let l=1;l<=8;l++){ const max=Math.pow(2,7*l)-1; if(value<max){
+    const out=new Uint8Array(l); let v=value;
+    for(let i=l-1;i>=0;i--){ out[i]=v&0xFF; v=Math.floor(v/256); }
+    out[0]|=0x80>>(l-1); return out; } }
+  throw new Error("слишком большой размер");
+}
+function idBytes(id){ const a=[]; let v=id; while(v>0){ a.unshift(v&0xFF); v=Math.floor(v/256); } return Uint8Array.from(a); }
+function uintBytes(v,width){ const o=new Uint8Array(width); let x=v;
+  for(let i=width-1;i>=0;i--){ o[i]=x&0xFF; x=Math.floor(x/256); } return o; }
+function f64Bytes(v){ const o=new Uint8Array(8); new DataView(o.buffer).setFloat64(0,v,false); return o; }
+function elem(id,payload){ const i=idBytes(id), s=vint(payload.length);
+  const o=new Uint8Array(i.length+s.length+payload.length);
+  o.set(i,0); o.set(s,i.length); o.set(payload,i.length+s.length); return o; }
+function concat(list){ let n=0; for(const a of list) n+=a.length;
+  const o=new Uint8Array(n); let p=0; for(const a of list){ o.set(a,p); p+=a.length; } return o; }
+
+const SEEK_POS_WIDTH = 8;   // фиксируем ширину, чтобы потом перезаписать на месте
+
+function createWebmIndexer(){
+  const S = {
+    ok:true, phase:"header", head:[], headLen:0,
+    out:0,               // сколько байт уже отдано наружу
+    segDataStart:0,      // позиция данных Segment в выходном файле
+    durPos:0,            // куда писать Duration
+    cuesPosPos:0,        // куда писать позицию Cues в SeekHead
+    cues:[], videoTrack:1, scale:1000000,
+    maxTs:0, curClusterTs:0, pendingCue:null, keyDecided:false,
+    pend:null,           // недоразобранный хвост кластерной фазы
+    reason:"",
+  };
+
+  function fail(why){ S.ok=false; S.reason=why; }
+
+  // ---- заголовок: ждём первый кластер, потом переписываем Info ----
+  function tryHeader(){
+    const b = concat(S.head);
+    let p = 0;
+    const eb = readId(b,p); if(!eb) return null;
+    if(eb.id!==ID.EBML){ fail("файл начинается не с EBML"); return null; }
+    const ebs = readSize(b,eb.next); if(!ebs) return null;
+    p = ebs.next + ebs.size; if(p>b.length) return null;
+    const ebmlHeader = b.subarray(0,p);
+
+    const sg = readId(b,p); if(!sg) return null;
+    if(sg.id!==ID.SEGMENT){ fail("после EBML нет Segment"); return null; }
+    const sgs = readSize(b,sg.next); if(!sgs) return null;
+    if(!sgs.unknown){ fail("Segment известного размера — поток не живой"); return null; }
+    const segHdr = b.subarray(p, sgs.next);
+    p = sgs.next;
+
+    // дети Segment до первого кластера
+    let info=null, tracks=null;
+    while(p < b.length){
+      const e = readId(b,p); if(!e) return null;
+      const s = readSize(b,e.next); if(!s) return null;
+      if(e.id===ID.CLUSTER) break;                 // дошли — заголовок целиком у нас
+      if(s.unknown){ fail("элемент заголовка неизвестного размера"); return null; }
+      const end = s.next + s.size; if(end > b.length) return null;
+      if(e.id===ID.INFO)   info   = {start:p,body:s.next,end};
+      if(e.id===ID.TRACKS) tracks = {start:p,body:s.next,end};
+      p = end;
+    }
+    if(p>=b.length) return null;                    // кластер ещё не приехал
+    if(!info || !tracks){ fail("в заголовке нет Info или Tracks"); return null; }
+
+    // TimestampScale и номер видеодорожки — нужны для Cues и Duration
+    walk(b, info.body, info.end, (id,body,end)=>{
+      if(id===ID.TIMESTAMPSCALE) S.scale = uint(b,body,end);
+    });
+    walk(b, tracks.body, tracks.end, (id,body,end)=>{
+      if(id!==ID.TRACKENTRY) return;
+      let num=null, type=null;
+      walk(b, body, end, (i2,b2,e2)=>{
+        if(i2===ID.TRACKNUMBER) num  = uint(b,b2,e2);
+        if(i2===ID.TRACKTYPE)   type = uint(b,b2,e2);
+      });
+      if(type===1 && num!=null) S.videoTrack = num;
+    });
+
+    // Info заново: всё прежнее + Duration-заглушка
+    const infoOld = b.subarray(info.body, info.end);
+    const durElem = concat([idBytes(ID.DURATION), vint(8), f64Bytes(0)]);
+    const infoNew = elem(ID.INFO, concat([infoOld, durElem]));
+    const durOffsetInInfo = infoNew.length - 8;
+
+    // SeekHead: одна ссылка на Cues, позиция фиксированной ширины
+    const seekEntry = (id,posBytes)=> elem(0x4DBB, concat([
+      elem(0x53AB, idBytes(id)), elem(0x53AC, posBytes) ]));
+    const cuesEntry = seekEntry(ID.CUES, uintBytes(0,SEEK_POS_WIDTH));
+    const seekHead  = elem(ID.SEEKHEAD, cuesEntry);
+    const cuesPosInSeek = seekHead.length - SEEK_POS_WIDTH;
+
+    const tracksBytes = b.subarray(tracks.start, tracks.end);
+    const out = concat([ebmlHeader, segHdr, seekHead, infoNew, tracksBytes]);
+
+    S.segDataStart = ebmlHeader.length + segHdr.length;
+    S.cuesPosPos   = ebmlHeader.length + segHdr.length + cuesPosInSeek;
+    S.durPos       = ebmlHeader.length + segHdr.length + seekHead.length + durOffsetInInfo;
+    S.phase = "clusters";
+    S.pend  = b.subarray(p);        // всё от первого кластера — в кластерную фазу
+    S.head = []; S.headLen = 0;
+    return out;
+  }
+
+  function uint(b,from,to){ let v=0; for(let i=from;i<to;i++) v=v*256+b[i]; return v; }
+  function walk(b,from,to,cb){
+    let p=from;
+    while(p<to){ const e=readId(b,p); if(!e) return; const s=readSize(b,e.next); if(!s) return;
+      const end=s.next+s.size; if(end>to) return; cb(e.id,s.next,end); p=end; }
+  }
+
+  /* Кластерная фаза. Разбираем поэлементно: у детей кластера размер известен,
+     поэтому границу кластера видно точно. Данные наружу отдаём как есть. */
+  function feedClusters(chunk){
+    S.pend = S.pend && S.pend.length ? concat([S.pend, chunk]) : chunk;
+    const b = S.pend;
+    let p = 0, safe = 0;
+    while(p < b.length){
+      const e = readId(b,p); if(!e) break;
+      const s = readSize(b,e.next); if(!s) break;
+      if(e.id===ID.CLUSTER){
+        if(!s.unknown && s.next+s.size>b.length && s.size>0){ /* известный размер — можно не ждать тело */ }
+        // таймстемп кластера — первый ребёнок
+        const t = readId(b,s.next); if(!t) break;
+        const ts = readSize(b,t.next); if(!ts) break;
+        if(t.id!==ID.TIMESTAMP){ fail("кластер без Timestamp"); return null; }
+        if(ts.next+ts.size > b.length) break;
+        const tsv = uint(b, ts.next, ts.next+ts.size);
+        S.curClusterTs = tsv;
+        if(tsv > S.maxTs) S.maxTs = tsv;
+        /* Точку в Cues ставим не на каждый кластер, а только на тот, что
+           начинается с ключевого кадра: прыжок в кластер без него даёт
+           «Not all references are available» и кашу вместо картинки.
+           Решение принимаем по первому блоку видеодорожки в кластере. */
+        S.pendingCue = { t:tsv, pos: S.out + p - S.segDataStart };
+        S.keyDecided = false;
+        p = ts.next + ts.size; safe = p;
+        continue;
+      }
+      if(e.id===ID.SIMPLEBLOCK || e.id===ID.BLOCKGROUP){
+        if(s.unknown){ fail("блок неизвестного размера"); return null; }
+        const end = s.next + s.size; if(end > b.length) break;
+        if(e.id===ID.SIMPLEBLOCK){
+          const tn = readSize(b, s.next);          // номер дорожки — тоже VINT
+          if(tn && tn.next+3 <= b.length){
+            const rel = (b[tn.next]<<8 | b[tn.next+1]) << 16 >> 16;
+            const abs = S.curClusterTs + rel; if(abs > S.maxTs) S.maxTs = abs;
+            if(tn.size===S.videoTrack && !S.keyDecided){
+              S.keyDecided = true;                 // бит 0x80 флагов — ключевой кадр
+              if((b[tn.next+2] & 0x80) && S.pendingCue){ S.cues.push(S.pendingCue); }
+              S.pendingCue = null;
+            }
+          }
+        } else {
+          /* BlockGroup: ключевой тогда, когда внутри нет ReferenceBlock. */
+          let isVideo=false, hasRef=false, seen=false;
+          walk(b, s.next, end, (i2,b2,e2)=>{
+            if(i2===ID.BLOCK){
+              seen=true;
+              const tn2 = readSize(b, b2);
+              if(tn2){
+                if(tn2.size===S.videoTrack) isVideo=true;
+                if(tn2.next+2<=b.length){
+                  const rel=(b[tn2.next]<<8 | b[tn2.next+1])<<16>>16;
+                  const abs=S.curClusterTs+rel; if(abs>S.maxTs) S.maxTs=abs;
+                }
+              }
+            }
+            if(i2===ID.REFBLOCK) hasRef=true;
+          });
+          if(seen && isVideo && !S.keyDecided){
+            S.keyDecided = true;
+            if(!hasRef && S.pendingCue){ S.cues.push(S.pendingCue); }
+            S.pendingCue = null;
+          }
+        }
+        p = end; safe = p;
+        continue;
+      }
+      if(e.id===ID.VOID){ if(s.unknown){ fail("Void неизвестного размера"); return null; }
+        const end=s.next+s.size; if(end>b.length) break; p=end; safe=p; continue; }
+      fail("неожиданный элемент 0x"+e.id.toString(16)+" в потоке кластеров");
+      return null;
+    }
+    const emit = b.subarray(0, safe);
+    S.pend = b.subarray(safe);
+    S.out += emit.length;
+    return emit;
+  }
+
+  return {
+    state:S,
+    /* Принимает кусок от MediaRecorder, возвращает то, что писать на диск. */
+    feed(u8){
+      if(!S.ok) return u8;
+      if(S.phase==="header"){
+        S.head.push(u8); S.headLen += u8.length;
+        if(S.headLen > 1<<20){ fail("заголовок не кончился на мегабайте"); return concat(S.head); }
+        const out = tryHeader();
+        if(!S.ok) return concat(S.head);
+        if(!out) return new Uint8Array(0);          // ждём ещё
+        const rest = S.pend; S.pend = new Uint8Array(0);
+        S.out = out.length;
+        const more = feedClusters(rest);
+        if(!S.ok) return concat([out, rest]);
+        return concat([out, more]);
+      }
+      const out = feedClusters(u8);
+      if(!S.ok) return concat([S.pend||new Uint8Array(0), u8]);
+      return out;
+    },
+    /* Хвост: Cues. Возвращает {tail, patches:[{pos,data}]} */
+    finish(){
+      if(!S.ok) return {tail:new Uint8Array(0), patches:[], ok:false, reason:S.reason};
+      if(S.pend && S.pend.length){ S.out += S.pend.length; }
+      const tailParts = S.pend && S.pend.length ? [S.pend] : [];
+      const cuePoints = S.cues.map(c => elem(0xBB, concat([
+        elem(0xB3, uintBytes(c.t, Math.max(1, Math.ceil(Math.log2(Math.max(c.t,1)+1)/8)))),
+        elem(0xB7, concat([ elem(0xF7, uintBytes(S.videoTrack,1)),
+                            elem(0xF1, uintBytes(c.pos, 8)) ]))
+      ])));
+      const cues = elem(ID.CUES, concat(cuePoints));
+      const cuesPos = S.out - S.segDataStart;
+      tailParts.push(cues);
+      const durMs = (S.maxTs + 33);                  // + один кадр на 30 fps
+      return {
+        tail: concat(tailParts),
+        patches: [
+          { pos:S.durPos,     data:f64Bytes(durMs) },
+          { pos:S.cuesPosPos, data:uintBytes(cuesPos, SEEK_POS_WIDTH) },
+        ],
+        ok:true, cues:S.cues.length, duration:durMs/1000,
+      };
+    },
+  };
+}
+
+/* Порядок не косметический. MediaRecorder пишет живым потоком и оглавления не
+   составляет: в WebM не оказывается ни Cues, ни SeekHead, ни Duration, и плеер
+   показывает длительность Infinity — это и есть жалоба «файл битый, не
+   перематывается». В MP4 тот же MediaRecorder даёт фрагменты moof, по которым
+   плеер таймлайн восстанавливает, и перемотка работает без всякой конвертации.
+   Сначала просим H.264+AAC: такой файл открывают и QuickTime, и DaVinci, и
+   Telegram. Дальше — что дадут: даже vp9 в MP4 перематывается, в отличие от
+   WebM. WebM остаётся последним рубежом для браузеров без MP4. */
+const MIMES=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,opus","video/mp4",
+             "video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+function mp4Available(){return MIMES.some(m=>m.indexOf("mp4")>=0&&MediaRecorder.isTypeSupported(m));}
+function pickMime(){
+  const want=(st.fmt==="webm")?"webm":"mp4";
+  for(const m of MIMES) if(m.indexOf(want)>=0 && MediaRecorder.isTypeSupported(m)) return m;
+  for(const m of MIMES) if(MediaRecorder.isTypeSupported(m)) return m;   // запрошенного нет — пишем чем можем
+  return "";
+}
+/* Формат выбирается на стартовом экране, до всего остального: проверка
+   контейнера не спрашивает ни камеры, ни папки. По умолчанию MP4 — он
+   перематывается и открывается чем угодно. WebM оставлен выбором, а не
+   аварийным путём: кому-то нужен именно открытый формат.
+   Если MP4 в браузере нет, кнопка гаснет и выбора не остаётся. */
+function applyFmt(){
+  const canMp4 = mp4Available();
+  if(!canMp4 && st.fmt!=="webm"){ st.fmt="webm"; save("fmt","webm"); }
+  const bm=$("#fmtMp4"), bw=$("#fmtWebm");
+  if(bm){ bm.disabled=!canMp4; bm.classList.toggle("on", canMp4 && st.fmt!=="webm"); }
+  if(bw){ bw.classList.toggle("on", st.fmt==="webm"); }
+  const webm = extFor(pickMime())===".webm";
+  const note = !canMp4
+    ? "Этот браузер не умеет записывать в MP4, поэтому доступен только WebM. Перематывается он нормально — оглавление студия дописывает сама, — но в QuickTime не открывается и монтажкой вроде DaVinci не читается. Нужен MP4: обнови Chrome или Edge до 126-й версии или новее."
+    : (webm ? "WebM перематывается — оглавление студия дописывает сама, — но не открывается в QuickTime и не читается монтажкой вроде DaVinci. Если запись пойдёт в монтаж или в Telegram, бери MP4." : "");
+  const w=$("#fmtwarn"); if(w){ w.textContent=note?("ℹ "+note):""; w.style.display=note?"block":"none"; }
+  const c=$("#seekwarn"); if(c){ c.title=note||"запись идёт в WebM"; c.style.display=webm?"inline":"none"; }
+}
+function extFor(m){return (m||"").indexOf("mp4")>=0?".mp4":".webm";}
 function tcFmt(s){const m=Math.floor(s/60),x=s%60;return (m<10?"0":"")+m+":"+(x<10?"0":"")+x;}
 function addMarker(type){if(!recording||!recSession)return;recSession.markers.push({t:recSecs(),slide:st.i+1,type});}
 function flashCut(){const b=$("#cutbtn");if(b){b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),500);}const mb=$("#m_cut");if(mb){mb.classList.add("ok");setTimeout(()=>mb.classList.remove("ok"),500);}}
@@ -1080,9 +1407,18 @@ function runCountdown(n){return new Promise(res=>{const el=$("#countdown");if(!e
    обработчики MediaRecorder захватывают именно его. Глобалки тут не годятся:
    onstop доезжает асинхронно, и к его моменту оператор уже мог начать следующий
    дубль или уйти в другой урок — старый файл получил бы чужие маркеры. */
-function newRecSession(name,dir){return {name,dir,writable:null,chunks:[],markers:[],queue:Promise.resolve(),discard:false,failed:false};}
+function newRecSession(name,dir,mime,ext){return {name,dir,mime,ext,writable:null,chunks:[],markers:[],queue:Promise.resolve(),discard:false,failed:false};}
 function recStamp(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"-"+p(d.getMinutes())+"-"+p(d.getSeconds());}
 function setSaveMsg(t,warn){const e=$("#savemsg");if(!e)return;e.textContent=t||"";e.style.display=t?"":"none";e.style.color=warn?"#ff8a3d":"#7a8290";}
+/* Патчи — два числа в уже записанных байтах. Blob.slice не копирует данные,
+   поэтому склейка «кусок — число — кусок» дёшева даже на двух гигабайтах. */
+function patchBlob(blob,patches){
+  if(!patches||!patches.length) return blob;
+  const ps=patches.slice().sort((a,b)=>a.pos-b.pos), parts=[]; let at=0;
+  for(const p of ps){ if(p.pos<at) return blob; parts.push(blob.slice(at,p.pos),p.data); at=p.pos+p.data.length; }
+  parts.push(blob.slice(at));
+  return new Blob(parts,{type:blob.type});
+}
 function saveBlobAs(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),60000);}
 
 /* Диск отвалился или кончился — дальше писать в мёртвый поток бессмысленно.
@@ -1104,15 +1440,19 @@ async function startRec(){
     const tracks=canvas.captureStream(30).getVideoTracks();
     const hasAudio=aTrack&&aTrack.readyState==="live"; if(hasAudio)tracks.push(aTrack);
     const mime=pickMime(), opts=mime?{mimeType:mime,videoBitsPerSecond:6000000,audioBitsPerSecond:128000}:{};
-    const S=newRecSession("lecture-"+recStamp(new Date()),(CURLESSON&&CURLESSON.dirHandle)||null);
-    try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+".webm",{create:true}); S.writable=await fh.createWritable(); } }catch(e){ S.writable=null; S.dir=null; }
+    const S=newRecSession("lecture-"+recStamp(new Date()),(CURLESSON&&CURLESSON.dirHandle)||null,mime,extFor(mime));
+    /* WebM приезжает без оглавления — строим его на лету. Для MP4 не нужно. */
+    S.ix = S.ext===".webm" ? createWebmIndexer() : null;
+    try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+S.ext,{create:true}); S.writable=await fh.createWritable(); } }catch(e){ S.writable=null; S.dir=null; }
     rec=new MediaRecorder(new MediaStream(tracks),opts);
     recSession=S; setSaveMsg("");
     rec.ondataavailable=e=>{
       if(!e.data.size)return;
-      if(!S.writable){ S.chunks.push(e.data); return; }
-      S.queue=S.queue.then(()=>S.writable?S.writable.write(e.data):S.chunks.push(e.data))
-                     .catch(()=>{ recWriteFailed(S); S.chunks.push(e.data); });
+      S.queue=S.queue.then(async()=>{
+        let data=e.data;
+        if(S.ix){ const o=S.ix.feed(new Uint8Array(await e.data.arrayBuffer())); if(!o.length)return; data=o; }
+        if(S.writable) await S.writable.write(data); else S.chunks.push(data);
+      }).catch(()=>{ recWriteFailed(S); if(S.ix)S.ix.state.ok=false; S.chunks.push(e.data); });
     };
     rec.onerror=ev=>{ setSaveMsg("сбой записи: "+((ev&&ev.error&&ev.error.name)||"неизвестная ошибка"),true); };
     rec.onstop=()=>{ finishRec(S); };
@@ -1131,20 +1471,39 @@ async function finishRec(S){
     await S.queue.catch(()=>{});
     if(S.discard){
       if(S.writable){ try{ await S.writable.abort(); }catch(e){} S.writable=null; }
-      if(S.dir){ try{ await S.dir.removeEntry(S.name+".webm"); }catch(e){} }
+      if(S.dir){ try{ await S.dir.removeEntry(S.name+S.ext); }catch(e){} }
       S.chunks=[]; setSaveMsg(""); return;
+    }
+    /* Оглавление дописывается последним: Cues в хвост, затем на место —
+       длительность и позиция Cues в SeekHead. Обе правки внутри того же
+       открытого writer, до close(): переоткрывать файл ради них нельзя,
+       createWritable копирует содержимое целиком. */
+    let patches=null;
+    if(S.ix && !S.failed){
+      const fin=S.ix.finish();
+      if(fin.ok){
+        try{
+          if(S.writable){
+            if(fin.tail.length) await S.writable.write(fin.tail);
+            for(const q of fin.patches) await S.writable.write({type:"write",position:q.pos,data:q.data});
+          }else{
+            if(fin.tail.length) S.chunks.push(fin.tail);
+            patches=fin.patches;
+          }
+        }catch(e){ S.failed=true; }
+      }
     }
     if(S.writable){
       try{ await S.writable.close(); S.writable=null; }
       catch(e){ S.writable=null; S.failed=true; }
     }
     if(S.failed||!S.dir){
-      if(S.chunks.length) saveBlobAs(new Blob(S.chunks,{type:"video/webm"}),S.name+".webm");
-      if(S.failed) alert("Не удалось дописать "+S.name+".webm в папку урока.\n\nТо, что успели удержать в памяти, отдано браузеру на скачивание. Файл в папке урока может оказаться неполным — проверь оба.");
+      if(S.chunks.length) saveBlobAs(patchBlob(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),patches),S.name+S.ext);
+      if(S.failed) alert("Не удалось дописать "+S.name+S.ext+" в папку урока.\n\nТо, что успели удержать в памяти, отдано браузеру на скачивание. Файл в папке урока может оказаться неполным — проверь оба.");
     }
     S.chunks=[];
     await writeMarkers(S);
-    setSaveMsg(S.failed?"сохранено скачиванием: "+S.name+".webm":"сохранено: "+S.name+".webm",S.failed);
+    setSaveMsg(S.failed?"сохранено скачиванием: "+S.name+S.ext:"сохранено: "+S.name+S.ext,S.failed);
   } finally {
     saving=false;
     if(recSession===S) recSession=null;
@@ -1155,7 +1514,7 @@ async function finishRec(S){
 async function writeMarkers(S){
   if(!S.markers.length) return;
   const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда"};
-  const lines=["Запись "+S.name+".webm","Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
+  const lines=["Запись "+S.name+S.ext,"Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
   for(const m of S.markers) lines.push(tcFmt(m.t)+"  "+(lab[m.type]||m.type)+"  — слайд "+m.slide);
   const text=lines.join("\n");
   try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+".markers.txt",{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return; } }catch(e){}
@@ -1383,7 +1742,7 @@ function bindStudio(){
 }
 function startStudio(){
   const ll=$("#laserlive");if(ll)ll.style.display="block";
-  applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
+  applyFmt();applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
   if(!started){ started=true; bindStudio(); bindGroupFolding(); bindSliderFolding(); requestAnimationFrame(loop); }
 }
