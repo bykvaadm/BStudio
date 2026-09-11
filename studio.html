@@ -85,8 +85,7 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 .b2{line-height:1.15;padding:4px 10px;text-align:center;}
 .b2 i{display:block;font-style:normal;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#8a8f99;}
 .b2 b{display:block;font-weight:600;}
-#ver{position:absolute;right:13px;bottom:1px;font-size:9px;letter-spacing:.04em;color:#5f656e;pointer-events:auto;white-space:nowrap;}
-#verSetup{margin-top:14px;font-size:11px;color:#6f757e;text-align:center;}   /* именно группы, а не контейнеры: пустое место строки кликов не ловит */
+/* именно группы, а не контейнеры: пустое место строки кликов не ловит */
 #barleft{display:flex;flex-wrap:wrap;gap:7px 9px;align-items:flex-end;align-content:flex-end;flex:1;min-width:0;}
 /* Порядок групп задаём всем сразу. Без этого те, кому order не назначен,
    получают 0 и уезжают в начало: «ещё» и «рисование» оказывались между
@@ -201,7 +200,6 @@ input[type=range]{width:90px;}
   <h1>🎬 BStudio</h1>
   <p class="sub">Укажи папку курса — или просто любую папку с картинками. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
   <div id="restoreBox" style="display:none"></div>
-  <div id="verSetup"></div>
   <button id="pickCourse" class="big">📁 Выбрать папку</button>
   <div id="lessonBox" style="display:none">
     <label>Урок</label>
@@ -298,7 +296,6 @@ input[type=range]{width:90px;}
      <span class="vdiv"></span>
      <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
   </div>
-  <span id="ver" title="версия студии: дата сборки и отпечаток файла"></span>
   <div id="barbottom">
   <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
   <div class="grp" id="g-more"><span class="cap">ещё</span>
@@ -325,10 +322,6 @@ input[type=range]{width:90px;}
 
 <script>
 const $ = s => document.querySelector(s);
-/* Подставляется скриптом stamp-version.py: дата публикации и первые семь
-   символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
-   был воспроизводим). */
-const STUDIO_VERSION="2026-09-11 · 28209fd";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
@@ -771,7 +764,7 @@ const recDot=$("#recDot"), recTime=$("#recTime");
 let st={ i:0, playing:false, speed:7, tempo:LS("tempo",135), font:LS("font",34),
   camOn:false, camFull:false, corner:LS("corner","br"), camSize:LS("camSize",0.25), mirror:LS("mirror",true),
   res:LS("res","1080"), burnIn:LS("burnIn",false), promptPos:LS("promptPos","top"), opacity:LS("opacity",0.78),
-  promptW:LS("promptW",1.0), promptH:LS("promptH",0.4), autoScroll:LS("autoScroll",false),
+  promptW:LS("promptW",0.28), promptH:LS("promptH",0.18), autoScroll:LS("autoScroll",false),
   autoAdvance:LS("autoAdvance",false), camDeviceId:LS("camDeviceId",""), micDeviceId:LS("micDeviceId",""), thumbOpacity:LS("thumbOpacity",0.3), camZoom:LS("camZoom",1), camPanX:LS("camPanX",0), camPanY:LS("camPanY",0), camShape:LS("camShape","rect"),
   camHide:false,
   inkPersist:LS("inkPersist",false), inkColor:LS("inkColor","#ff4d4d"), inkWidth:LS("inkWidth",4) };
@@ -842,7 +835,7 @@ async function saveCamToScript(){
   }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
 }
 
-const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:1.0,promptH:0.4,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
+const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:0.28,promptH:0.18,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
 const SET_KEYS=Object.keys(DEFAULTS);
 function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;syncResBtn();$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;
   const iw=$("#inkw");if(iw)iw.value=st.inkWidth;
@@ -946,7 +939,7 @@ async function camMicDiag(){
   return b.join("\n");
 }
 
-function camMicError(e){const n=(e&&e.name)||"Error";const h={NotAllowedError:"Доступ запрещён. Проверь по порядку: 1) значок камеры в адресной строке браузера — «Разрешить», потом перезагрузи страницу; 2) macOS: Системные настройки — Конфиденциальность и безопасность — Камера и Микрофон — включи свой браузер и перезапусти его; 3) если ниже написано «разрешение камеры: denied», а окно с вопросом не появлялось вовсе — доступ мог запретить корпоративный профиль браузера: открой chrome://policy и поищи VideoCaptureAllowed / VideoCaptureAllowedUrls.",NotFoundError:"Устройства не найдены. Чаще всего виноват сам браузер, а не камера: если она работает в других программах, полностью выйди из браузера (Cmd+Q, не просто закрыть окно) и запусти снова — подвисший процесс захвата даёт ровно эту ошибку. Не помогло: 1) chrome://settings/content/camera — вверху выбор устройства по умолчанию, там может стоять исчезнувшая внешняя камера; 2) виртуальные камеры (OBS, Snap, старый Zoom) в /Library/CoreMediaIO/Plug-Ins/DAL/ ломают перечисление устройств; 3) проверь, что устройство вообще подключено.",NotReadableError:"Устройство занято другим приложением (Zoom, FaceTime, OBS...). Закрой их и попробуй снова.",OverconstrainedError:"Сохранённое устройство недоступно на этой машине. Я сбросил выбор на «по умолчанию» — нажми «камеру» ещё раз.",SecurityError:"Нужен http://localhost или https. Открой студию через studio-launch.command (localhost:8000)."};return "Камера/микрофон недоступны ["+n+"].\n"+(h[n]||(e&&e.message)||"Неизвестная ошибка.");}
+function camMicError(e){const n=(e&&e.name)||"Error";const h={NotAllowedError:"Доступ запрещён. Значок камеры в адресной строке — «Разрешить», перезагрузи. На macOS ещё: Настройки — Конфиденциальность — Камера, включи браузер и перезапусти.",NotFoundError:"Устройства не найдены. Чаще всего виноват сам браузер, а не камера: если она работает в других программах, полностью выйди из браузера (Cmd+Q, не просто закрыть окно) и запусти снова — подвисший процесс захвата даёт ровно эту ошибку. Не помогло: 1) chrome://settings/content/camera — вверху выбор устройства по умолчанию, там может стоять исчезнувшая внешняя камера; 2) виртуальные камеры (OBS, Snap, старый Zoom) в /Library/CoreMediaIO/Plug-Ins/DAL/ ломают перечисление устройств; 3) проверь, что устройство вообще подключено.",NotReadableError:"Устройство занято другим приложением (Zoom, FaceTime, OBS...). Закрой их и попробуй снова.",OverconstrainedError:"Сохранённое устройство недоступно на этой машине. Я сбросил выбор на «по умолчанию» — нажми «камеру» ещё раз.",SecurityError:"Нужен http://localhost или https. Открой студию через studio-launch.command (localhost:8000)."};return "Камера/микрофон недоступны ["+n+"].\n"+(h[n]||(e&&e.message)||"Неизвестная ошибка.");}
 function releaseCam(){if(camStream){camStream.getTracks().forEach(t=>{try{t.stop();}catch(e){}});camStream=null;}}
 /* Камера просит только видео. Раньше запрос был совместный, и отказ в
    микрофоне гасил разрешённую камеру, а каждое включение заводило ещё один
@@ -1395,7 +1388,6 @@ function startStudio(){
   if(!started){ started=true; bindStudio(); bindGroupFolding(); bindSliderFolding(); requestAnimationFrame(loop); }
 }
 
-for(const id of ["#ver","#verSetup"]){ const el=$(id); if(el) el.textContent="версия "+STUDIO_VERSION; }
 bindSetup();
 </script>
 </body></html>
