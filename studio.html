@@ -167,6 +167,7 @@ input[type=range]{width:90px;}
 .vu{display:inline-block;width:48px;height:8px;border-radius:5px;background:#23252e;overflow:hidden;vertical-align:middle;}
 .vu>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2e8b45,#f5c518,#ff3b30);transition:width .05s linear;}
 #micwarn{display:none;color:#ff7a6e;font-size:12px;font-weight:700;padding:0 4px;}
+#savemsg{display:none;color:#7a8290;font-size:12px;padding:0 4px;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .sp{flex:1;}
 #rec{display:none;}
 #back{font-size:12px;}
@@ -285,6 +286,7 @@ input[type=range]{width:90px;}
      <button id="pausebtn" style="display:none" title="пауза/продолжить">⏸</button>
      <button id="stopbtn" style="display:none" title="стоп">⏹</button>
      <span id="recTime" class="lab">0:00</span>
+     <span id="savemsg"></span>
      <span class="vdiv"></span>
      <button id="cutbtn" title="поставить отметку (таймкод) в записи">⚑ отметка</button>
      <span class="vdiv"></span>
@@ -326,7 +328,7 @@ const $ = s => document.querySelector(s);
 /* Подставляется скриптом stamp-version.py: дата публикации и первые семь
    символов sha256 самого файла (с обнулённой этой строкой, чтобы отпечаток
    был воспроизводим). */
-const STUDIO_VERSION="2026-08-27 · 93a3a75";
+const STUDIO_VERSION="2026-09-11 · 28209fd";
 const LS=(k,d)=>{try{const v=localStorage.getItem("studio_"+k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
 const save=(k,v)=>{try{localStorage.setItem("studio_"+k,JSON.stringify(v));}catch(e){}};
 
@@ -648,7 +650,19 @@ async function loadLesson(lesson, src){
         else if(name==="manifest.json"){ try{ manifest=JSON.parse(await (await h.getFile()).text()); }catch(e){} }
       }else if(IMG_RE.test(name)) files.push([name,h]);
     }
-    files.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
+    /* manifest.json — это перечень кадров текущего рендера, а не подсказка.
+       Есть он — берём кадры строго по нему и в его порядке: повторный рендер
+       укоротившейся деки перезаписывает первые p-NN.png, а лишние с прошлого
+       раза остаются лежать в папке и иначе попали бы в показ. */
+    let picked=null;
+    if(frames&&manifest&&Array.isArray(manifest.slides)&&manifest.slides.length){
+      const by=new Map(files.map(([n,h])=>[n.toLowerCase(),h]));
+      const acc=[];
+      for(const m of manifest.slides){ const h=m&&m.file&&by.get(String(m.file).toLowerCase()); if(h)acc.push([m.file,h]); }
+      if(acc.length) picked=acc;
+    }
+    if(picked) files.length=0, files.push(...picked);
+    else files.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
     for(const [name,h] of files){ imgs.push(URL.createObjectURL(await h.getFile())); }
   }
   // Пустой источник до студии пускать нельзя: она рисует SLIDES[0] сразу.
@@ -672,6 +686,11 @@ async function loadLesson(lesson, src){
   }
   return data;
 }
+
+/* Каждый кадр деки — свой object URL, и без revoke прошлая дека висит в памяти
+   до закрытия вкладки. Отпускаем только после успешной загрузки новой: упавшая
+   загрузка не должна оставить студию с мёртвыми картинками. */
+function releaseDeck(){for(const s of SLIDES){if(s&&typeof s.img==="string"&&s.img.slice(0,5)==="blob:"){try{URL.revokeObjectURL(s.img);}catch(e){}}}}
 
 /* ---------- setup UI ---------- */
 let COURSE=null, LESSONS=[], CURLESSON=null;
@@ -710,7 +729,12 @@ async function startSelected(){
   if(!src||src.kind==="pptx"){ $("#setupMsg").textContent="Этот источник студия не нарисует — сконвертируйте PPTX в PDF (pptx-to-pdf.command)."; $("#setupMsg").className="msg err"; return; }
   $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":"Загружаю кадры…"; $("#setupMsg").className="msg";
   try{
-    SLIDES=await loadLesson(lesson, src); CURLESSON=lesson;
+    const next=await loadLesson(lesson, src);
+    releaseDeck(); SLIDES=next; CURLESSON=lesson;
+    /* Штрихи ключуются номером слайда, поэтому при смене деки их надо снести:
+       иначе рисунок со слайда 1 прошлого урока всплывёт на слайде 1 нового и
+       уедет в запись. */
+    inkBySlide.clear(); inkUndoBySlide.clear();
     save("lastLesson",lesson.name); save("src:"+lesson.name, src.name);
     const warn=(src.kind==="pdf")?pdfWarningText():"";
     if(warn){ alert("⚠ "+warn); }
@@ -749,18 +773,21 @@ let st={ i:0, playing:false, speed:7, tempo:LS("tempo",135), font:LS("font",34),
   res:LS("res","1080"), burnIn:LS("burnIn",false), promptPos:LS("promptPos","top"), opacity:LS("opacity",0.78),
   promptW:LS("promptW",1.0), promptH:LS("promptH",0.4), autoScroll:LS("autoScroll",false),
   autoAdvance:LS("autoAdvance",false), camDeviceId:LS("camDeviceId",""), micDeviceId:LS("micDeviceId",""), thumbOpacity:LS("thumbOpacity",0.3), camZoom:LS("camZoom",1), camPanX:LS("camPanX",0), camPanY:LS("camPanY",0), camShape:LS("camShape","rect"),
-  followMeta:LS("followMeta",false), camHide:false,
+  camHide:false,
   inkPersist:LS("inkPersist",false), inkColor:LS("inkColor","#ff4d4d"), inkWidth:LS("inkWidth",4) };
 let curImg=new Image();
 const CAMPOS={tl:["l","t"],tc:["c","t"],tr:["r","t"],mr:["r","m"],br:["r","b"],bc:["c","b"],bl:["l","b"],ml:["l","m"]};
 const CAMSEQ=["tl","tc","tr","mr","br","bc","bl","ml"];
-let readPos=0; const PROMPT_PAD=14; let autoTimer=0; let recDiscard=false; let slideAccum=0, slideLast=Date.now(); let prePausePlaying=false; let scrollHideTimer=0; let advTimer=0; let advArmed=true; let advChaining=false; let scrollAnim=0, readTarget=null;
-let mediaStream=null, micTrack=null, audioCtx=null, analyser=null, vuData=null, rec=null, recChunks=[], recording=false, recAccum=0, recLast=0, recPaused=false, drawing=false, started=false;
-let recWritable=null, recName="", markers=[], starting=false;
+let readPos=0; const PROMPT_PAD=14; let autoTimer=0; let slideAccum=0, slideLast=Date.now(); let prePausePlaying=false; let scrollHideTimer=0; let advTimer=0; let advArmed=true; let advChaining=false; let scrollAnim=0, readTarget=null;
+let camStream=null, camPending=null, micStream=null, micTrack=null, micPending=null, audioCtx=null, analyser=null, vuSrc=null, vuData=null, rec=null, recording=false, recAccum=0, recLast=0, recPaused=false, drawing=false, started=false;
+let recSession=null, starting=false, saving=false;
 
 function showSlide(i){
-  if(!st.inkPersist) inkClearSlide(st.i);
-  st.i=Math.max(0,Math.min(SLIDES.length-1,i));
+  const n=Math.max(0,Math.min(SLIDES.length-1,i));
+  /* Чистим штрихи только при настоящем переходе: на краю деки стрелка никуда
+     не ведёт, и стирать нарисованное ей незачем. */
+  if(!st.inkPersist && n!==st.i) inkClearSlide(st.i);
+  st.i=n;
   const s=SLIDES[st.i];
   stage.src=s.img; curImg=new Image(); curImg.src=s.img; const th=$("#slidethumb");if(th)th.src=s.img;
   promptInner.innerHTML=s.html; prompter.scrollTop=0; readPos=PROMPT_PAD; positionRead(); syncSpeed(); applySpeed();
@@ -788,7 +815,7 @@ function snapshotCamBase(){camBase={camShape:st.camShape,corner:st.corner,camSiz
 function setCam(c){st.camShape=c.camShape;st.corner=c.corner;st.camSize=c.camSize;st.camFull=c.camFull;st.camZoom=c.camZoom;st.camHide=!!c.camHide;applyCam();const a=$("#camsz");if(a)a.value=st.camSize;const b=$("#camzoom");if(b)b.value=st.camZoom;}
 function resetCamDefault(){st.camShape="rect";st.corner="br";st.camSize=0.25;st.camFull=false;st.camZoom=1;st.camPanX=0;st.camPanY=0;st.camHide=false;save("corner","br");save("camSize",0.25);save("camShape","rect");save("camZoom",1);save("camPanX",0);save("camPanY",0);snapshotCamBase();applyCam();applyAllControls();}
 function applySlideCam(){const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;const c=Object.assign({},camBase);if(m){if(m.shape)c.camShape=m.shape;if(m.corner)c.corner=m.corner;if(m.size!=null)c.camSize=Math.min(0.42,Math.max(0.14,m.size));if(m.full!=null)c.camFull=m.full;if(m.zoom!=null)c.camZoom=Math.min(2.5,Math.max(1,m.zoom));if(m.on===false)c.camHide=true;else if(m.on===true)c.camHide=false;}setCam(c);}
-function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;if(st.followMeta||!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
+function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;if(!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
 function slideCam(){applySlideCam();camHint();}
 async function saveCamToScript(){
   if(!CURLESSON||!CURLESSON.scriptHandle){alert("У этого урока нет 03-script.md — meta:camera писать некуда.");return;}
@@ -815,9 +842,9 @@ async function saveCamToScript(){
   }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
 }
 
-const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:1.0,promptH:0.4,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",followMeta:false,inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
+const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:1.0,promptH:0.4,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
 const SET_KEYS=Object.keys(DEFAULTS);
-function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;syncResBtn();$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;const mt=$("#metabtn");if(mt)mt.classList.toggle("active",st.followMeta);
+function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;syncResBtn();$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;
   const iw=$("#inkw");if(iw)iw.value=st.inkWidth;
   inkSyncPersistBtn();
   document.querySelectorAll("#inkcolors button").forEach(b=>b.classList.toggle("swon",b.dataset.color===st.inkColor));
@@ -868,8 +895,35 @@ function maybeAdv(){const s=SLIDES[st.i];if(st.autoAdvance&&advArmed&&s&&!s.titl
 function startAdvCountdown(){cancelAdv();const chain=st.playing;let k=5;const upd=()=>{const el=placeAdv();if(el){el.textContent=k;el.style.display="flex";}};upd();const tick=()=>{k--;if(k<=0){const e2=$("#advcount");if(e2)e2.style.display="none";if(st.i<SLIDES.length-1){advChaining=chain;showSlide(st.i+1);advChaining=false;}return;}upd();advTimer=setTimeout(tick,1000);};advTimer=setTimeout(tick,1000);}
 
 function resumeAudio(){try{if(audioCtx&&audioCtx.state==="suspended")audioCtx.resume();}catch(e){}}
-function setupVU(stream){try{if(!stream.getAudioTracks().length)return;audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const src=audioCtx.createMediaStreamSource(stream);analyser=audioCtx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=0.6;vuData=new Uint8Array(analyser.fftSize);src.connect(analyser);}catch(e){}}
-async function ensureAudio(){resumeAudio();if(micTrack&&micTrack.readyState==="live")return micTrack;const get=u=>navigator.mediaDevices.getUserMedia({audio:Object.assign({echoCancellation:false,noiseSuppression:true,autoGainControl:true},(u&&st.micDeviceId)?{deviceId:{exact:st.micDeviceId}}:{})});try{let a;try{a=await get(true);}catch(e){if((e.name==="OverconstrainedError"||e.name==="NotFoundError")&&st.micDeviceId){st.micDeviceId="";save("micDeviceId","");a=await get(false);}else throw e;}micTrack=a.getAudioTracks()[0]||null;if(micTrack)setupVU(a);populateDevices();return micTrack;}catch(e){return null;}}
+/* Прошлый источник отцепляем руками: MediaStreamSource держит поток живым, и
+   после пары пересозданий VU показывает сумму всех микрофонов сразу. */
+function setupVU(stream){try{if(!stream.getAudioTracks().length)return;audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();if(vuSrc){try{vuSrc.disconnect();}catch(e){}vuSrc=null;}if(analyser){try{analyser.disconnect();}catch(e){}}vuSrc=audioCtx.createMediaStreamSource(stream);analyser=audioCtx.createAnalyser();analyser.fftSize=512;analyser.smoothingTimeConstant=0.6;vuData=new Uint8Array(analyser.fftSize);vuSrc.connect(analyser);}catch(e){}}
+function releaseMic(){if(micStream){micStream.getTracks().forEach(t=>{try{t.stop();}catch(e){}});micStream=null;}micTrack=null;}
+/* Микрофон принадлежит только этой функции — камера его больше не трогает.
+   Параллельные вызовы (старт записи и смена устройства в один момент) сводятся
+   в один запрос: иначе каждый заводил бы свой поток, и старые оставались жить. */
+async function ensureAudio(){
+  resumeAudio();
+  if(micTrack&&micTrack.readyState==="live")return micTrack;
+  if(micPending)return micPending;
+  const get=u=>navigator.mediaDevices.getUserMedia({audio:Object.assign({echoCancellation:false,noiseSuppression:true,autoGainControl:true},(u&&st.micDeviceId)?{deviceId:{exact:st.micDeviceId}}:{})});
+  micPending=(async()=>{
+    try{
+      let a;
+      try{ a=await get(true); }
+      catch(e){
+        if((e.name==="OverconstrainedError"||e.name==="NotFoundError")&&st.micDeviceId){st.micDeviceId="";save("micDeviceId","");a=await get(false);}
+        else throw e;
+      }
+      releaseMic();
+      micStream=a; micTrack=a.getAudioTracks()[0]||null;
+      if(micTrack)setupVU(a);
+      populateDevices();
+      return micTrack;
+    }catch(e){ return null; }
+  })();
+  try{ return await micPending; } finally { micPending=null; }
+}
 /* Когда камера не даётся, важно понять, кто именно её не даёт: браузер на этом
    адресе, ОС или политика. Поэтому к тексту ошибки прикладываем факты. */
 async function camMicDiag(){
@@ -893,8 +947,36 @@ async function camMicDiag(){
 }
 
 function camMicError(e){const n=(e&&e.name)||"Error";const h={NotAllowedError:"Доступ запрещён. Проверь по порядку: 1) значок камеры в адресной строке браузера — «Разрешить», потом перезагрузи страницу; 2) macOS: Системные настройки — Конфиденциальность и безопасность — Камера и Микрофон — включи свой браузер и перезапусти его; 3) если ниже написано «разрешение камеры: denied», а окно с вопросом не появлялось вовсе — доступ мог запретить корпоративный профиль браузера: открой chrome://policy и поищи VideoCaptureAllowed / VideoCaptureAllowedUrls.",NotFoundError:"Устройства не найдены. Чаще всего виноват сам браузер, а не камера: если она работает в других программах, полностью выйди из браузера (Cmd+Q, не просто закрыть окно) и запусти снова — подвисший процесс захвата даёт ровно эту ошибку. Не помогло: 1) chrome://settings/content/camera — вверху выбор устройства по умолчанию, там может стоять исчезнувшая внешняя камера; 2) виртуальные камеры (OBS, Snap, старый Zoom) в /Library/CoreMediaIO/Plug-Ins/DAL/ ломают перечисление устройств; 3) проверь, что устройство вообще подключено.",NotReadableError:"Устройство занято другим приложением (Zoom, FaceTime, OBS...). Закрой их и попробуй снова.",OverconstrainedError:"Сохранённое устройство недоступно на этой машине. Я сбросил выбор на «по умолчанию» — нажми «камеру» ещё раз.",SecurityError:"Нужен http://localhost или https. Открой студию через studio-launch.command (localhost:8000)."};return "Камера/микрофон недоступны ["+n+"].\n"+(h[n]||(e&&e.message)||"Неизвестная ошибка.");}
-async function startCam(){const build=()=>({video:Object.assign({width:{ideal:1920},height:{ideal:1080}},st.camDeviceId?{deviceId:{exact:st.camDeviceId}}:{}),audio:Object.assign({echoCancellation:false,noiseSuppression:true,autoGainControl:true},st.micDeviceId?{deviceId:{exact:st.micDeviceId}}:{})});const acquire=async()=>{try{return await navigator.mediaDevices.getUserMedia(build());}catch(e){if((e.name==="OverconstrainedError"||e.name==="NotFoundError")&&(st.camDeviceId||st.micDeviceId)){st.camDeviceId="";st.micDeviceId="";save("camDeviceId","");save("micDeviceId","");return await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080}},audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true}});}throw e;}};try{mediaStream=await acquire();cam.srcObject=mediaStream;await cam.play();const at=mediaStream.getAudioTracks()[0];if(at){micTrack=at;setupVU(mediaStream);}resumeAudio();st.camOn=true;applyCam();populateDevices();}catch(e){ let d=""; try{ d="\n\n— что видит студия —\n"+await camMicDiag(); }catch(x){} alert(camMicError(e)+d); }}
-function stopCam(){if(mediaStream){mediaStream.getVideoTracks().forEach(t=>t.stop());}st.camOn=false;applyCam();}
+function releaseCam(){if(camStream){camStream.getTracks().forEach(t=>{try{t.stop();}catch(e){}});camStream=null;}}
+/* Камера просит только видео. Раньше запрос был совместный, и отказ в
+   микрофоне гасил разрешённую камеру, а каждое включение заводило ещё один
+   микрофонный поток поверх старого. Звук теперь берёт ensureAudio() отдельно —
+   его же слышит и MediaRecorder, так что VU и запись смотрят на один трек. */
+async function startCam(){
+  if(camPending)return camPending;
+  const build=()=>({video:Object.assign({width:{ideal:1920},height:{ideal:1080}},st.camDeviceId?{deviceId:{exact:st.camDeviceId}}:{})});
+  const acquire=async()=>{
+    try{ return await navigator.mediaDevices.getUserMedia(build()); }
+    catch(e){
+      if((e.name==="OverconstrainedError"||e.name==="NotFoundError")&&st.camDeviceId){
+        st.camDeviceId="";save("camDeviceId","");
+        return await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080}}});
+      }
+      throw e;
+    }
+  };
+  camPending=(async()=>{
+    try{
+      const s=await acquire();
+      releaseCam();
+      camStream=s; cam.srcObject=s; await cam.play();
+      resumeAudio(); st.camOn=true; applyCam(); populateDevices();
+      ensureAudio();
+    }catch(e){ let d=""; try{ d="\n\n— что видит студия —\n"+await camMicDiag(); }catch(x){} alert(camMicError(e)+d); }
+  })();
+  try{ await camPending; } finally { camPending=null; }
+}
+function stopCam(){releaseCam();try{cam.srcObject=null;}catch(e){}st.camOn=false;applyCam();}
 function fillSel(sel,devs,cur){if(!sel)return;sel.innerHTML="";const d=document.createElement("option");d.value="";d.textContent="по умолчанию";sel.appendChild(d);devs.forEach((dev,i)=>{const o=document.createElement("option");o.value=dev.deviceId;o.textContent=dev.label||("устройство "+(i+1));sel.appendChild(o);});sel.value=cur||"";}
 async function populateDevices(){try{const devs=await navigator.mediaDevices.enumerateDevices();fillSel($("#camsel"),devs.filter(d=>d.kind==="videoinput"),st.camDeviceId);fillSel($("#micsel"),devs.filter(d=>d.kind==="audioinput"),st.micDeviceId);}catch(e){}}
 
@@ -979,7 +1061,7 @@ function drawBurnIn(ctx,cw,ch){
 }
 function pickMime(){for(const m of ["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"])if(MediaRecorder.isTypeSupported(m))return m;return "";}
 function tcFmt(s){const m=Math.floor(s/60),x=s%60;return (m<10?"0":"")+m+":"+(x<10?"0":"")+x;}
-function addMarker(type){if(!recording)return;markers.push({t:recSecs(),slide:st.i+1,type});}
+function addMarker(type){if(!recording||!recSession)return;recSession.markers.push({t:recSecs(),slide:st.i+1,type});}
 function flashCut(){const b=$("#cutbtn");if(b){b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),500);}const mb=$("#m_cut");if(mb){mb.classList.add("ok");setTimeout(()=>mb.classList.remove("ok"),500);}}
 function markCut(){if(!recording)return;addMarker("cut");flashCut();}
 /* Размер кадра записи. 720p/1080p — привычные пресеты (слайд вписывается,
@@ -1001,8 +1083,27 @@ function syncResBtn(){const b=$("#resbtn");if(!b)return;b.textContent=resLabel()
   b.title=st.res==="deck"?"размер записи: по самой большой картинке слайдов — без чёрных полей":"размер записи (жми, чтобы переключить; «по слайдам» = размер самих картинок)";}
 
 function runCountdown(n){return new Promise(res=>{const el=$("#countdown");if(!el){res();return;}let k=n;el.style.display="flex";el.textContent=k;const tick=()=>{k--;if(k<=0){el.style.display="none";res();}else{el.textContent=k;setTimeout(tick,1000);}};setTimeout(tick,1000);});}
+/* Один дубль — один объект. Имя, папка, writer, маркеры и буфер живут в нём, а
+   обработчики MediaRecorder захватывают именно его. Глобалки тут не годятся:
+   onstop доезжает асинхронно, и к его моменту оператор уже мог начать следующий
+   дубль или уйти в другой урок — старый файл получил бы чужие маркеры. */
+function newRecSession(name,dir){return {name,dir,writable:null,chunks:[],markers:[],queue:Promise.resolve(),discard:false,failed:false};}
+function recStamp(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"-"+p(d.getMinutes())+"-"+p(d.getSeconds());}
+function setSaveMsg(t,warn){const e=$("#savemsg");if(!e)return;e.textContent=t||"";e.style.display=t?"":"none";e.style.color=warn?"#ff8a3d":"#7a8290";}
+function saveBlobAs(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),60000);}
+
+/* Диск отвалился или кончился — дальше писать в мёртвый поток бессмысленно.
+   Переходим на буфер в памяти: остаток дубля хотя бы скачается по «Стоп».
+   Молча этого делать нельзя, поэтому строка состояния краснеет сразу. */
+function recWriteFailed(S){
+  if(S.failed)return; S.failed=true;
+  const w=S.writable; S.writable=null;
+  if(w){try{w.abort();}catch(e){}}
+  setSaveMsg("диск не принимает запись — пишу в память, файл скачается по «Стоп»",true);
+}
+
 async function startRec(){
-  if(recording||starting)return; starting=true;
+  if(recording||starting||saving)return; starting=true;
   try{
     const aTrack=await ensureAudio();
     const [cw,ch]=recSize();
@@ -1010,36 +1111,77 @@ async function startRec(){
     const tracks=canvas.captureStream(30).getVideoTracks();
     const hasAudio=aTrack&&aTrack.readyState==="live"; if(hasAudio)tracks.push(aTrack);
     const mime=pickMime(), opts=mime?{mimeType:mime,videoBitsPerSecond:6000000,audioBitsPerSecond:128000}:{};
+    const S=newRecSession("lecture-"+recStamp(new Date()),(CURLESSON&&CURLESSON.dirHandle)||null);
+    try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+".webm",{create:true}); S.writable=await fh.createWritable(); } }catch(e){ S.writable=null; S.dir=null; }
     rec=new MediaRecorder(new MediaStream(tracks),opts);
-    recName="lecture-"+(function(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"-"+p(d.getMinutes())+"-"+p(d.getSeconds());})(new Date());
-    recChunks=[]; recWritable=null; markers=[];
-    try{ if(CURLESSON&&CURLESSON.dirHandle){ const fh=await CURLESSON.dirHandle.getFileHandle(recName+".webm",{create:true}); recWritable=await fh.createWritable(); } }catch(e){ recWritable=null; }
-    rec.ondataavailable=e=>{ if(!e.data.size)return; if(recWritable){ recWritable.write(e.data).catch(()=>{}); } else { recChunks.push(e.data); } };
-    rec.onstop=async()=>{ const w=recWritable; recWritable=null; if(recDiscard){ recDiscard=false; if(w){try{await w.abort();}catch(e){}} return; } if(w){ try{await w.close();}catch(e){} } else { const blob=new Blob(recChunks,{type:"video/webm"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=recName+".webm"; a.click(); } writeMarkers(); };
+    recSession=S; setSaveMsg("");
+    rec.ondataavailable=e=>{
+      if(!e.data.size)return;
+      if(!S.writable){ S.chunks.push(e.data); return; }
+      S.queue=S.queue.then(()=>S.writable?S.writable.write(e.data):S.chunks.push(e.data))
+                     .catch(()=>{ recWriteFailed(S); S.chunks.push(e.data); });
+    };
+    rec.onerror=ev=>{ setSaveMsg("сбой записи: "+((ev&&ev.error&&ev.error.name)||"неизвестная ошибка"),true); };
+    rec.onstop=()=>{ finishRec(S); };
     const mw=$("#micwarn"); if(mw) mw.style.display=hasAudio?"none":"inline";
     await runCountdown(3);
     rec.start(1000);recording=true;recPaused=false;recAccum=0;recLast=Date.now();slideAccum=0;slideLast=Date.now();updateRecUI();
   } finally { starting=false; }
 }
-async function writeMarkers(){
-  if(!markers.length) return;
-  const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда"};
-  const lines=["Запись "+recName+".webm","Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
-  for(const m of markers) lines.push(tcFmt(m.t)+"  "+(lab[m.type]||m.type)+"  — слайд "+m.slide);
-  const text=lines.join("\n");
-  try{ if(CURLESSON&&CURLESSON.dirHandle){ const fh=await CURLESSON.dirHandle.getFileHandle(recName+".markers.txt",{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return; } }catch(e){}
-  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([text],{type:"text/plain"})); a.download=recName+".markers.txt"; a.click();
+
+/* Закрытие дубля. Пока оно идёт, saving держит предупреждение о закрытии
+   вкладки и не даёт начать следующий дубль: до close() браузер фиксирует
+   файл в теневой копии, и оборванный close() — это потерянная лекция. */
+async function finishRec(S){
+  saving=true; updateRecUI(); setSaveMsg("сохраняю…");
+  try{
+    await S.queue.catch(()=>{});
+    if(S.discard){
+      if(S.writable){ try{ await S.writable.abort(); }catch(e){} S.writable=null; }
+      if(S.dir){ try{ await S.dir.removeEntry(S.name+".webm"); }catch(e){} }
+      S.chunks=[]; setSaveMsg(""); return;
+    }
+    if(S.writable){
+      try{ await S.writable.close(); S.writable=null; }
+      catch(e){ S.writable=null; S.failed=true; }
+    }
+    if(S.failed||!S.dir){
+      if(S.chunks.length) saveBlobAs(new Blob(S.chunks,{type:"video/webm"}),S.name+".webm");
+      if(S.failed) alert("Не удалось дописать "+S.name+".webm в папку урока.\n\nТо, что успели удержать в памяти, отдано браузеру на скачивание. Файл в папке урока может оказаться неполным — проверь оба.");
+    }
+    S.chunks=[];
+    await writeMarkers(S);
+    setSaveMsg(S.failed?"сохранено скачиванием: "+S.name+".webm":"сохранено: "+S.name+".webm",S.failed);
+  } finally {
+    saving=false;
+    if(recSession===S) recSession=null;
+    updateRecUI();
+  }
 }
-function stopRec(){if(rec&&recording){rec.stop();}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
-function stopRecDiscard(){if(rec&&recording){recDiscard=true;rec.stop();}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
+
+async function writeMarkers(S){
+  if(!S.markers.length) return;
+  const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда"};
+  const lines=["Запись "+S.name+".webm","Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
+  for(const m of S.markers) lines.push(tcFmt(m.t)+"  "+(lab[m.type]||m.type)+"  — слайд "+m.slide);
+  const text=lines.join("\n");
+  try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+".markers.txt",{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return; } }catch(e){}
+  saveBlobAs(new Blob([text],{type:"text/plain"}),S.name+".markers.txt");
+}
+function stopRec(){if(rec&&recording){saving=true;try{rec.stop();}catch(e){saving=false;}}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
+function stopRecDiscard(){if(rec&&recording){if(recSession)recSession.discard=true;saving=true;try{rec.stop();}catch(e){saving=false;}}recording=false;recPaused=false;drawing=false;cancelAdv();updateRecUI();}
 function restartShow(){if(recording&&!confirm("Идёт запись. Начать презентацию сначала? Текущая запись будет отброшена."))return;if(recording)stopRecDiscard();recAccum=0;inkBySlide.clear();inkUndoBySlide.clear();showSlide(0);}
 function togglePause(){if(!recording||!rec)return;if(recPaused){try{rec.resume();}catch(e){}recPaused=false;st.playing=prePausePlaying;syncPlay();}else{try{rec.pause();}catch(e){}recPaused=true;prePausePlaying=st.playing;st.playing=false;cancelAdv();advArmed=true;syncPlay();addMarker("pause");}updateRecUI();}
 function updateRecUI(){
-  const on=recording,p=recPaused,show=(id,v)=>{const e=$(id);if(e)e.style.display=v?"":"none";};
+  const on=recording,p=recPaused,sv=saving,show=(id,v)=>{const e=$(id);if(e)e.style.display=v?"":"none";};
   recDot.classList.toggle("on",on&&!p);
-  recDot.style.background=on?(p?"#e0a030":""):"";
+  recDot.style.background=on?(p?"#e0a030":""):(sv?"#3b82f6":"");
   show("#recbtn",!on);show("#pausebtn",on);show("#stopbtn",on);
   show("#m_rec",!on);show("#m_pause",on);show("#m_stop",on);
+  /* Пока файл дописывается, новый дубль начинать нельзя: он перетрёт rec и
+     оставит предыдущий без владельца. Кнопка так и говорит, чем занята. */
+  const rb=$("#recbtn");if(rb){rb.disabled=sv;rb.textContent=sv?"⏳ сохраняю":"⏺ Запись";}
+  const mrb=$("#m_rec");if(mrb)mrb.disabled=sv;
   const t=p?"▶":"⏸",pb=$("#pausebtn"),mp=$("#m_pause");if(pb)pb.textContent=t;if(mp)mp.textContent=t;
   const td=$("#tdot");if(td)td.style.background=on?(p?"#e0a030":"#ff3b30"):"#555";
 }
@@ -1054,7 +1196,7 @@ setInterval(()=>{const now=Date.now();const onTitle=!!(SLIDES[st.i]&&SLIDES[st.i
 let wl=null;async function keepAwake(){try{wl=await navigator.wakeLock.request("screen");}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")keepAwake();});
 window.addEventListener("resize",()=>{syncSpeed();applySpeed();syncScrollCtl();});
-window.addEventListener("beforeunload",e=>{if(recording){e.preventDefault();e.returnValue="";}});
+window.addEventListener("beforeunload",e=>{if(recording||saving){e.preventDefault();e.returnValue="";}});
 
 /* Сворачивание групп панели. Состояние помнится по каждой группе отдельно:
    у кого-то не нужно рисование, у кого-то камера — панель должна оставаться
@@ -1188,7 +1330,7 @@ function bindStudio(){
   $("#campany").oninput=e=>{st.camPanY=+e.target.value;save("camPanY",st.camPanY);applyCam();};
   $("#thumbop").oninput=e=>{st.thumbOpacity=+e.target.value;save("thumbOpacity",st.thumbOpacity);applyCam();};
   $("#camsel").onchange=e=>{st.camDeviceId=e.target.value;save("camDeviceId",st.camDeviceId);if(st.camOn&&!recording){stopCam();startCam();}};
-  $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);if(!recording){if(micTrack){try{micTrack.stop();}catch(e){}micTrack=null;}ensureAudio();}};
+  $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);if(!recording){releaseMic();ensureAudio();}};
   $("#recbtn").onclick=startRec;$("#pausebtn").onclick=togglePause;$("#stopbtn").onclick=stopRec;
   $("#cutbtn").onclick=markCut;$("#m_cut").onclick=markCut;
   $("#resbtn").onclick=()=>{const i=RES_SEQ.indexOf(st.res);st.res=RES_SEQ[(i+1)%RES_SEQ.length];save("res",st.res);syncResBtn();};
@@ -1238,6 +1380,7 @@ function bindStudio(){
     else if(e.key===" "){togglePlay();e.preventDefault();}
     else if(e.key==="ArrowUp"){if(e.shiftKey){st.speed=Math.min(60,st.speed+1);st.tempo=Math.round(speedToTempo(st.speed));save("tempo",st.tempo);applySpeed();}else nudgePrompt(-lineH()*1.5);e.preventDefault();}
     else if(e.key==="ArrowDown"){if(e.shiftKey){st.speed=Math.max(1,st.speed-1);st.tempo=Math.round(speedToTempo(st.speed));save("tempo",st.tempo);applySpeed();}else nudgePrompt(lineH()*1.5);e.preventDefault();}
+    else if((e.ctrlKey||e.metaKey||e.altKey)&&e.key.toLowerCase()!=="z"){/* Cmd+R — перезагрузка, а не запись: буквенные шорткаты под модификатором не трогаем */}
     else if(e.key.toLowerCase()==="r"){recording?stopRec():startRec();}
     else if(e.key.toLowerCase()==="f"){$("#full").click();}
     else if(e.key.toLowerCase()==="l"){toggleLaser();}

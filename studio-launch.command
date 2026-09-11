@@ -45,8 +45,23 @@ fi
 [ "$SRV" = python ] && [ -z "$PY" ] && PY="$(command -v python3)"
 
 URL="http://localhost:${PORT}/${PAGE}"
+# Студии нужен File System Access API, а это Chrome/Edge. В браузере по
+# умолчанию она упирается в «выбрать папку курса» на первом же шаге, поэтому
+# хромоподобный ищем сами, а дефолтный берём только когда его нет — и говорим
+# об этом вслух, чтобы отказ не выглядел поломкой студии.
+open_studio() {
+  for app in "Google Chrome" "Microsoft Edge" "Brave Browser" "Chromium"; do
+    if [ -d "/Applications/$app.app" ] || [ -d "$HOME/Applications/$app.app" ]; then
+      open -a "$app" "$URL" && return 0
+    fi
+  done
+  echo "⚠ Chrome/Edge на машине не нашёлся — открываю браузером по умолчанию."
+  echo "  Если выбор папки курса там не работает, дело в этом: нужен Chrome или Edge."
+  open "$URL"
+}
+
 ( sleep 1
-  if command -v open >/dev/null 2>&1; then open "$URL"; else echo "Открой в браузере: $URL"; fi
+  if command -v open >/dev/null 2>&1; then open_studio; else echo "Открой в браузере: $URL"; fi
 ) &
 
 echo "BStudio открыта: $URL   (сервер: $SRV)"

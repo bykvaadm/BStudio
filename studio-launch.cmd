@@ -78,6 +78,10 @@ try {
         throw "Рядом с этим файлом нет $Page. Он должен лежать в папке slides/ — там же, где studio.html."
     }
     Say "Студия найдена: $root"
+    # Сравнивать с самим $root нельзя: это проверка префикса строки, а не
+    # принадлежности каталогу — рядом лежащая "slides-private" прошла бы её
+    # для корня "slides". Разделитель на конце делает проверку честной.
+    $rootPrefix = $root + '\'
 
     # ---- 2. Поднимаем локальный сервер ------------------------------------
     Step '[2 из 3]  Запускаю студию...'
@@ -132,7 +136,7 @@ try {
             if (-not $rel) { $rel = $Page }
             $file = [IO.Path]::GetFullPath((Join-Path $root ($rel -replace '/', '\')))
 
-            if ($file.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+            if ($file.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $file -PathType Leaf)) {
                 $bytes = [IO.File]::ReadAllBytes($file)
                 $ext = [IO.Path]::GetExtension($file).ToLower()
                 $ctx.Response.ContentType = $(if ($types.ContainsKey($ext)) { $types[$ext] } else { 'application/octet-stream' })
