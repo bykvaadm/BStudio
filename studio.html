@@ -280,8 +280,8 @@ input[type=range]{width:90px;}
      <button id="cornerbtn" title="позиция камеры"></button><button id="mirrorbtn" title="зеркало"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 4 11 6 11 18 3 20Z"/><path d="M21 4 13 6 13 18 21 20Z"/><line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="1.5 2"/><path d="M5 12h3M6.6 10.4 8.3 12 6.6 13.6"/><path d="M19 12h-3M17.4 10.4 15.7 12 17.4 13.6"/></svg></button>
      <button id="camfullbtn" title="камера на весь экран (вкл/выкл)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17.8c0-2.3 1.8-3.7 4-3.7s4 1.4 4 3.7"/></svg></button>
      <button id="camshape" title="форма камеры: ▭ прямоугольник / ◯ круг">▭</button>
-     <button id="metabtn" title="сбросить камеру в дефолт (низ-право, стандартный размер). Слайды без meta показывают эту базу; meta переопределяет только свой слайд.">сброс камеры</button>
-     <button id="metasavebtn" title="записать текущие параметры камеры в скрипт (&lt;!-- meta:camera … --&gt;) для этого слайда">📷→скрипт</button>
+     <button id="metabtn" title="снять настройку камеры с этого слайда и вернуть базу к заводской (низ-право, стандартный размер). Слайды без своей настройки показывают базу.">сброс камеры</button>
+     <button id="metasavebtn" title="записать текущие параметры камеры в скрипт (&lt;!-- meta:camera … --&gt;) для этого слайда. Нет 03-script.md или он короче деки — студия заведёт файл в папке урока и допишет заголовки сама">📷→скрипт</button>
      <span class="vdiv"></span>
      <span class="sld"><input id="camsz" type="range" min="0.14" max="0.42" step="0.01"><span class="scap">размер</span></span>
      <span class="sld"><input id="camzoom" type="range" min="1" max="2.5" step="0.1" title="приблизить камеру (цифровой зум)"><span class="scap">зум</span></span>
@@ -329,7 +329,7 @@ input[type=range]{width:90px;}
   <div class="grp" id="g-more"><span class="cap">ещё</span>
      <button id="back" title="к выбору урока">☰</button>
      <span class="vdiv"></span>
-     <button id="savebtn" title="запомнить текущие настройки">💾</button>
+     <button id="savebtn" title="запомнить текущие настройки; текущая камера становится базой для всех слайдов без своей настройки">💾</button>
      <button id="resetbtn" title="сброс: вернуть сохранённые или стандартные">↺</button>
      <span class="vdiv"></span>
      <button id="grpreset" class="b2" title="вернуть все унесённые блоки обратно в панель"><i>сброс</i><b>положения меню</b></button>
@@ -643,6 +643,11 @@ function pdfWarningText(){
    чёрные поля. Поэтому запоминаем размер самой большой картинки деки — режим
    «по слайдам» снимает ровно в нём, и полей не остаётся. */
 let DECKSIZE={w:1920,h:1080};
+/* Сопоставление речитатива с кадрами: по manifest.json (по id) или по порядку.
+   От этого зависит, можно ли достроить недостающий заголовок в 03-script.md:
+   при позиционном сопоставлении можно (дописали — встало на своё место),
+   при manifest-сопоставлении id берётся из манифеста, а его студия не правит. */
+let DECK_BY_MANIFEST=false;
 function imgSize(url){return new Promise(res=>{const im=new Image();im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});im.onerror=()=>res(null);im.src=url;});}
 
 async function loadLesson(lesson, src){
@@ -698,12 +703,13 @@ async function loadLesson(lesson, src){
   // Речитатива может не быть вовсе — тогда все слайды просто без текста.
   const slides=lesson.scriptHandle ? parseScript(await (await lesson.scriptHandle.getFile()).text()) : [];
   const byId={}; slides.forEach(s=>byId[s.id]=s);
+  DECK_BY_MANIFEST=!!(manifest&&Array.isArray(manifest.slides)&&manifest.slides.length);
   const data=[];
   for(let i=0;i<imgs.length;i++){
     let paras=[], isTitle=false, cam=null, sid="";
     if(manifest&&manifest.slides&&manifest.slides[i]){ const mid=manifest.slides[i].id; const s=byId[mid]; if(s){paras=s.paras;isTitle=!!s.title;cam=s.cam||null;} sid=mid||(s&&s.id)||""; }
     else if(slides[i]){ paras=slides[i].paras; isTitle=!!slides[i].title; cam=slides[i].cam||null; sid=slides[i].id||""; }
-    const plain=paras.join("\n\n"); data.push({img:imgs[i], html:paraHtml(paras), plain, title:isTitle, cam, id:sid, words:plain.replace(/\[P\]/g," ").replace(/[*`]/g,"").trim().split(/\s+/).filter(Boolean).length});
+    const plain=paras.join("\n\n"); data.push({img:imgs[i], html:paraHtml(paras), plain, title:isTitle, cam, camScript:cam, id:sid, words:plain.replace(/\[P\]/g," ").replace(/[*`]/g,"").trim().split(/\s+/).filter(Boolean).length});
   }
   return data;
 }
@@ -837,34 +843,122 @@ function posIcon(){const pb=$("#posbtn");if(!pb)return;const up=st.promptPos==="
 function cornerIcon(){const cb=$("#cornerbtn");if(!cb)return;const A={tl:"M8.5 8.5 4 4M4 7.2 4 4 7.2 4",tc:"M12 8 12 3.5M9.5 6 12 3.5 14.5 6",tr:"M15.5 8.5 20 4M16.8 4 20 4 20 7.2",mr:"M16 12 20.5 12M18 9.5 20.5 12 18 14.5",br:"M15.5 15.5 20 20M20 16.8 20 20 16.8 20",bc:"M12 16 12 20.5M9.5 18 12 20.5 14.5 18",bl:"M8.5 15.5 4 20M7.2 20 4 20 4 16.8",ml:"M8 12 3.5 12M6 9.5 3.5 12 6 14.5"};let p="";for(const k in A){const on=k===st.corner;p+='<path d="'+A[k]+'" stroke="'+(on?"var(--acc)":"#6b7280")+'" stroke-width="'+(on?2.4:1.5)+'"'+(on?' style="filter:drop-shadow(0 0 2.5px var(--acc))"':"")+'/>';}cb.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="9.5" y="9.5" width="5" height="5" rx="1.2" stroke="#6b7280" stroke-width="1.3"/>'+p+'</svg>';}
 let camBase={}, camHintTimer=0;
 function snapshotCamBase(){camBase={camShape:st.camShape,corner:st.corner,camSize:st.camSize,camFull:st.camFull,camZoom:st.camZoom,camHide:false};}
+/* Ручная правка камеры ложится на ТЕКУЩИЙ слайд, а не на всю деку. Раньше
+   каждая крутилка звала snapshotCamBase(), и камера, подвинутая на 5-м слайде,
+   тут же становилась базой для всех остальных (и уезжала в localStorage на
+   следующий запуск) — настройка получалась «для презы», а не «для слайда».
+   Теперь правка ложится ровно туда, откуда её потом заберёт «📷→скрипт».
+   Базу для всей деки меняют явно: 💾 (запомнить текущую) и «сброс камеры». */
+function camToSlide(){
+  const s=SLIDES[st.i]; if(!s) return;
+  const c={zoom:st.camZoom, full:st.camFull};
+  if(!st.camFull){c.shape=st.camShape;c.corner=st.corner;c.size=st.camSize;}
+  if(st.camHide) c.on=false;            // слайд скрыт метой — правка размера этого не отменяет
+  s.cam=c;
+}
 function setCam(c){st.camShape=c.camShape;st.corner=c.corner;st.camSize=c.camSize;st.camFull=c.camFull;st.camZoom=c.camZoom;st.camHide=!!c.camHide;applyCam();const a=$("#camsz");if(a)a.value=st.camSize;const b=$("#camzoom");if(b)b.value=st.camZoom;}
-function resetCamDefault(){st.camShape="rect";st.corner="br";st.camSize=0.25;st.camFull=false;st.camZoom=1;st.camPanX=0;st.camPanY=0;st.camHide=false;save("corner","br");save("camSize",0.25);save("camShape","rect");save("camZoom",1);save("camPanX",0);save("camPanY",0);snapshotCamBase();applyCam();applyAllControls();}
+/* «сброс камеры» — заводская база И снятое переопределение текущего слайда:
+   иначе сброшенная камера вернулась бы к правке, стоило уйти со слайда и
+   прийти обратно. camScript не трогаем: что написано в 03-script.md, то
+   написано — после сброса это и покажет баннер-подсказка. */
+function resetCamDefault(){const cs=SLIDES[st.i];if(cs)cs.cam=null;st.camShape="rect";st.corner="br";st.camSize=0.25;st.camFull=false;st.camZoom=1;st.camPanX=0;st.camPanY=0;st.camHide=false;save("corner","br");save("camSize",0.25);save("camShape","rect");save("camZoom",1);save("camPanX",0);save("camPanY",0);snapshotCamBase();applyCam();applyAllControls();}
 function applySlideCam(){const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;const c=Object.assign({},camBase);if(m){if(m.shape)c.camShape=m.shape;if(m.corner)c.corner=m.corner;if(m.size!=null)c.camSize=Math.min(0.42,Math.max(0.14,m.size));if(m.full!=null)c.camFull=m.full;if(m.zoom!=null)c.camZoom=Math.min(2.5,Math.max(1,m.zoom));if(m.on===false)c.camHide=true;else if(m.on===true)c.camHide=false;}setCam(c);}
-function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;if(!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
+function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].camScript)||null;if(!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
 function slideCam(){applySlideCam();camHint();}
+/* Заголовки слайдов в тексте скрипта — ровно те, что различает parseScript.
+   Нужны, чтобы понять, какой по счёту слайд уже описан в файле и какие номера заняты. */
+function scriptSections(lines){
+  const out=[];
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].match(/^###\s+Слайд\s+([0-9.]+)\s*(?:[—–-].*)?$/);
+    if(m){out.push({line:i,id:m[1]});continue;}
+    if(/^##\s+Титульн/i.test(lines[i])) out.push({line:i,id:"титул"});
+  }
+  return out;
+}
+/* Нет id — значит, в 03-script.md про этот слайд ещё ничего не написано: файла
+   не было, он пустой или короче деки. Раньше на этом всё и кончалось («У слайда
+   нет id — meta не пишется»), и выставленную камеру приходилось вбивать руками.
+   Теперь скелет дописывается сам. Без manifest.json речитатив сопоставляется с
+   кадрами ПО ПОРЯДКУ, поэтому мало дописать заголовок текущего слайда — нужны и
+   все предыдущие, иначе мета встанет на чужой кадр. Пустые заголовки безвредны:
+   слайд без речитатива студия и так показывает заглушкой. */
+function ensureSectionId(lines,target){
+  const secs=scriptSections(lines);
+  if(secs[target]) return secs[target].id;
+  const taken=new Set(secs.map(x=>x.id));
+  let sid="";
+  for(let k=secs.length;k<=target;k++){
+    let n=k+1; while(taken.has(String(n))) n++;
+    sid=String(n); taken.add(sid);
+    if(lines.length&&lines[lines.length-1].trim()!=="") lines.push("");
+    lines.push("### Слайд "+sid);
+  }
+  return sid;
+}
+/* 03-script.md рядом с декой может и не лежать — заводим его сами, в папке
+   урока, чтобы «📷→скрипт» работал и на голой папке с картинками. Папка открыта
+   на запись, отдельного разрешения не нужно. */
+async function ensureScriptHandle(){
+  if(!CURLESSON) return null;
+  if(CURLESSON.scriptHandle) return CURLESSON.scriptHandle;
+  if(!CURLESSON.dirHandle) return null;
+  CURLESSON.scriptHandle=await CURLESSON.dirHandle.getFileHandle("03-script.md",{create:true});
+  return CURLESSON.scriptHandle;
+}
+/* Записать не вышло — не повод терять настройку: на слайде она уже проставлена
+   и доживёт до конца сессии. Говорим об этом прямо, чтобы не выглядело так,
+   будто клик ничего не сделал. */
+function camSaveFallback(why){
+  alert("В скрипт не записал: "+why+".\nКамера запомнена для этого слайда до конца сессии (уйдёшь и вернёшься — параметры те же), но после перезагрузки пропадёт.");
+}
 async function saveCamToScript(){
-  if(!CURLESSON||!CURLESSON.scriptHandle){alert("У этого урока нет 03-script.md — meta:camera писать некуда.");return;}
-  const s=SLIDES[st.i], sid=s&&s.id;
-  if(!sid){alert("У слайда нет id — meta не пишется.");return;}
+  const s=SLIDES[st.i]; if(!s) return;
   const toks=[];
   if(!st.camOn || st.camHide) toks.push("off");
   else if(st.camFull){toks.push("full: on");if((st.camZoom||1)>1.01)toks.push("zoom: "+(st.camZoom||1).toFixed(1));}
   else{toks.push("type: "+(st.camShape==="circle"?"round":"rect"));toks.push("position: "+(CAMSEQ.indexOf(st.corner)+1));toks.push("size: "+Math.round(st.camSize*100));if((st.camZoom||1)>1.01)toks.push("zoom: "+(st.camZoom||1).toFixed(1));}
   const metaLine="<!-- meta:camera "+toks.join(", ")+" -->";
+  /* Сначала на слайд, потом в файл: что бы дальше ни случилось с диском, в этой
+     сессии камера на слайде уже такая, как выставил. */
+  s.cam=parseCamMeta(metaLine);
+  let h=null;
+  try{ h=await ensureScriptHandle(); }
+  catch(e){ camSaveFallback("не удалось создать 03-script.md в папке урока ("+e.message+")"); return; }
+  if(!h){ camSaveFallback("у урока нет папки, доступной на запись"); return; }
   try{
-    const text=await (await CURLESSON.scriptHandle.getFile()).text();
-    const lines=text.split(/\r?\n/);
+    const text=await (await h.getFile()).text();
+    // Пустой файл — это ноль строк, а не одна пустая: иначе скрипт начнётся с пробела.
+    const lines=text.trim()?text.split(/\r?\n/):[];
+    let sid=s.id;
+    if(!sid){
+      if(DECK_BY_MANIFEST){ camSaveFallback("кадр сопоставлен по manifest.json, а там у него пустой id — впиши id в манифест"); return; }
+      sid=ensureSectionId(lines,st.i);
+      s.id=sid;
+      /* Скелет дописался сразу на несколько слайдов — раздаём id всем, кому
+         достался заголовок: иначе чип «слайд N» у них останется прочерком,
+         а следующий клик полезет дописывать по второму разу. */
+      const fresh=scriptSections(lines);
+      for(let k=0;k<SLIDES.length&&k<fresh.length;k++) if(!SLIDES[k].id) SLIDES[k].id=fresh[k].id;
+      const si=$("#slideid");if(si)si.textContent=(s.id&&s.id!=="титул")?("слайд "+s.id):(s.title?"титул":"—");
+    }
     let hdr=-1;
     if(sid==="титул"){for(let i=0;i<lines.length;i++){if(/^##\s+Титульн/i.test(lines[i])){hdr=i;break;}}}
     else{for(let i=0;i<lines.length;i++){const m=lines[i].match(/^###\s+Слайд\s+([0-9.]+)/);if(m&&m[1]===sid){hdr=i;break;}}}
-    if(hdr<0){alert("Не нашёл заголовок слайда в скрипте — meta не записана.");return;}
+    /* id есть, а заголовка нет: так бывает, когда id пришёл из manifest.json или
+       скрипт правили снаружи. Дописываем секцию в конец — по id она найдётся. */
+    if(hdr<0){
+      if(lines.length&&lines[lines.length-1].trim()!=="") lines.push("");
+      lines.push(sid==="титул"?"## Титульный слайд":"### Слайд "+sid);
+      hdr=lines.length-1;
+    }
     let metaIdx=-1;
     for(let i=hdr+1;i<lines.length;i++){if(/meta:camera/i.test(lines[i])){metaIdx=i;break;}if(/^###\s/.test(lines[i])||/^##\s/.test(lines[i])||lines[i].trim()==="---")break;}
     if(metaIdx>=0){lines[metaIdx]=metaLine;}else{const ins=[metaLine];if(lines.length>hdr+1&&lines[hdr+1].trim()!=="")ins.push("");lines.splice(hdr+1,0,...ins);}
-    const w=await CURLESSON.scriptHandle.createWritable();await w.write(lines.join("\n"));await w.close();
-    s.cam=parseCamMeta(metaLine);
+    const w=await h.createWritable();await w.write(lines.join("\n"));await w.close();
+    s.camScript=s.cam;   // в файле теперь ровно это — баннер-подсказка должен знать
     flashBtn($("#metasavebtn"));
-  }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
+  }catch(e){ camSaveFallback(e.message); }
 }
 
 const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080",burnIn:false,promptPos:"top",opacity:0.78,promptW:0.28,promptH:0.18,autoScroll:false,autoAdvance:false,thumbOpacity:0.3,camZoom:1,camPanX:0,camPanY:0,camShape:"rect",fmt:"mp4",inkPersist:false,inkColor:"#ff4d4d",inkWidth:4};
@@ -875,8 +969,10 @@ function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox()
   document.querySelectorAll("#inkcolors button").forEach(b=>b.classList.toggle("swon",b.dataset.color===st.inkColor));
 }
 function flashBtn(b){if(!b)return;b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),700);}
-function saveSettings(){const o={};for(const k of SET_KEYS)o[k]=st[k];save("preset",o);flashBtn($("#savebtn"));}
-function resetSettings(){const pr=LS("preset",null);for(const k of SET_KEYS){const v=(pr&&pr[k]!==undefined&&pr[k]!==null)?pr[k]:DEFAULTS[k];st[k]=v;save(k,st[k]);}applyAllControls();flashBtn($("#resetbtn"));}
+/* 💾 — единственное место, где текущая камера становится базой для всей деки
+   и переживает перезапуск: крутилки теперь правят только свой слайд. */
+function saveSettings(){const o={};for(const k of SET_KEYS){o[k]=st[k];save(k,st[k]);}save("preset",o);snapshotCamBase();flashBtn($("#savebtn"));}
+function resetSettings(){const pr=LS("preset",null);for(const k of SET_KEYS){const v=(pr&&pr[k]!==undefined&&pr[k]!==null)?pr[k]:DEFAULTS[k];st[k]=v;save(k,st[k]);}snapshotCamBase();applyAllControls();flashBtn($("#resetbtn"));}
 
 function lineH(){return st.font*1.5;}
 function contentH(){return (promptInner?promptInner.offsetHeight:0)+PROMPT_PAD*2;}
@@ -1553,7 +1649,7 @@ function recSecs(){return recording?Math.floor(recAccum/1000):0;}
 function hidePanel(){$("#bar").style.display="none";$("#minibar").style.display="flex";}
 function showPanel(){$("#minibar").style.display="none";$("#bar").style.display="flex";}
 function toggleCam(){st.camOn?stopCam():startCam();}
-function toggleCamFull(){st.camFull=!st.camFull;save("camFull",st.camFull);snapshotCamBase();if(st.camFull&&!st.camOn)startCam();else applyCam();}
+function toggleCamFull(){st.camFull=!st.camFull;camToSlide();if(st.camFull&&!st.camOn)startCam();else applyCam();}
 function fmt(s){const m=Math.floor(s/60),x=s%60;return `${m}:${x<10?"0":""}${x}`;}
 setInterval(()=>{const now=Date.now();const onTitle=!!(SLIDES[st.i]&&SLIDES[st.i].title);if(recording&&!recPaused)recAccum+=now-recLast;recLast=now;if(recording&&!recPaused&&!onTitle)slideAccum+=now-slideLast;slideLast=now;const rs=recSecs(),t=fmt(rs);recTime.textContent=t;const tt=$("#totTime");if(tt){tt.textContent=t;tt.style.color=rs>=2700?"#ff5a4d":rs>=2100?"#ffab2e":rs>=1500?"#37d27a":"#f0f1f3";}const sl=$("#slTime");if(sl){const ss=recording?Math.floor(slideAccum/1000):0;sl.textContent=fmt(ss);sl.style.color=ss>=120?"#ff5a4d":ss>=60?"#37d27a":"#f0f1f3";}},500);
 
@@ -1688,10 +1784,10 @@ function bindStudio(){
   $("#fontm").onclick=()=>{st.font=Math.max(18,st.font-2);save("font",st.font);applyFont();};
   $("#fontp").onclick=()=>{st.font+=2;save("font",st.font);applyFont();};
   $("#cambtn").onclick=toggleCam;
-  $("#cornerbtn").onclick=()=>{const i=CAMSEQ.indexOf(st.corner);st.corner=CAMSEQ[(i<0?0:i+1)%CAMSEQ.length];save("corner",st.corner);snapshotCamBase();applyCam();};
+  $("#cornerbtn").onclick=()=>{const i=CAMSEQ.indexOf(st.corner);st.corner=CAMSEQ[(i<0?0:i+1)%CAMSEQ.length];camToSlide();applyCam();};
   $("#mirrorbtn").onclick=()=>{st.mirror=!st.mirror;save("mirror",st.mirror);applyCam();};
-  $("#camsz").oninput=e=>{st.camSize=+e.target.value;save("camSize",st.camSize);snapshotCamBase();applyCam();};
-  $("#camzoom").oninput=e=>{st.camZoom=+e.target.value;save("camZoom",st.camZoom);snapshotCamBase();applyCam();};
+  $("#camsz").oninput=e=>{st.camSize=+e.target.value;camToSlide();applyCam();};
+  $("#camzoom").oninput=e=>{st.camZoom=+e.target.value;camToSlide();applyCam();};
   $("#campanx").oninput=e=>{st.camPanX=+e.target.value;save("camPanX",st.camPanX);applyCam();};
   $("#campany").oninput=e=>{st.camPanY=+e.target.value;save("camPanY",st.camPanY);applyCam();};
   $("#thumbop").oninput=e=>{st.thumbOpacity=+e.target.value;save("thumbOpacity",st.thumbOpacity);applyCam();};
@@ -1716,7 +1812,7 @@ function bindStudio(){
   $("#m_rec").onclick=startRec;$("#m_pause").onclick=togglePause;$("#m_stop").onclick=stopRec;
   $("#m_cam").onclick=toggleCam;
   $("#camfullbtn").onclick=toggleCamFull;
-  $("#camshape").onclick=()=>{st.camShape=st.camShape==="circle"?"rect":"circle";save("camShape",st.camShape);snapshotCamBase();applyCam();};
+  $("#camshape").onclick=()=>{st.camShape=st.camShape==="circle"?"rect":"circle";camToSlide();applyCam();};
   $("#metabtn").onclick=()=>{resetCamDefault();flashBtn($("#metabtn"));camHint();};
   $("#laserbtn").onclick=toggleLaser;
   window.addEventListener("mousemove",e=>{const n=slideNorm(e.clientX,e.clientY);lastNorm=n;if(laserOn&&n.inside){laserHead={nx:n.nx,ny:n.ny};const t=performance.now();laserMoveT=t;if(t-laserLastPush>8){laserPts.push({nx:n.nx,ny:n.ny,t});laserLastPush=t;}}else laserHead=null;});
