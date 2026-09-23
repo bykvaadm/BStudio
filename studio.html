@@ -1483,22 +1483,31 @@ async function startRec(){
    через воздух, то есть весь настоящий путь звука. По файлу потом видно, как
    расходятся смена квадрата и щелчок от начала к концу записи. Рядом с дублем
    ложится <имя>.synctest.json: что сообщили микрофон, звук и MediaRecorder. */
-const SYNC={on:new URLSearchParams(location.search).has("synctest"),white:false,timer:null,log:null};
-function drawSyncMark(ctx,cw){const sz=Math.round(cw*0.06);ctx.fillStyle=SYNC.white?"#fff":"#000";ctx.fillRect(0,0,sz,sz);}
+const SYNC={on:new URLSearchParams(location.search).has("synctest"),white:false,timer:null,log:null,pending:null};
+function drawSyncMark(ctx,cw){
+  const sz=Math.round(cw*0.06);ctx.fillStyle=SYNC.white?"#fff":"#000";ctx.fillRect(0,0,sz,sz);
+  /* Момент фактической отрисовки: при 10–20 кадрах/с он отстаёт от
+     запланированного на кадр и больше — анализ вычитает эту разницу. */
+  const p=SYNC.pending; if(p&&p.white===SYNC.white&&p.drawAt==null) p.drawAt=+performance.now().toFixed(1);
+}
 function syncTick(){
-  if(!audioCtx||!recording||recPaused) return;
+  if(!audioCtx||!recording) return;
+  if(recPaused){ SYNC.log.pausedSeen=true; return; }
   const when=audioCtx.currentTime+0.15, o=audioCtx.createOscillator(), g=audioCtx.createGain();
   o.frequency.value=2000; g.gain.setValueAtTime(0.9,when); g.gain.setValueAtTime(0,when+0.03);
   o.connect(g).connect(audioCtx.destination); o.start(when); o.stop(when+0.05);
   let perfAt=performance.now()+150;
   try{const ts=audioCtx.getOutputTimestamp(); if(ts&&ts.performanceTime) perfAt=ts.performanceTime+(when-ts.contextTime)*1000;}catch(e){}
-  const n=SYNC.log.ticks.length;
-  setTimeout(()=>{SYNC.white=!SYNC.white;},Math.max(0,perfAt-performance.now()));
-  SYNC.log.ticks.push({n,perfAt:+perfAt.toFixed(1),recMs:recAccum+(Date.now()-recLast)});
+  const t={n:SYNC.log.ticks.length,perfAt:+perfAt.toFixed(1),recMs:recAccum+(Date.now()-recLast),white:!SYNC.white,drawAt:null};
+  SYNC.log.ticks.push(t);
+  setTimeout(()=>{ if(!recording) return; if(recPaused){t.paused=true;return;} SYNC.white=t.white; SYNC.pending=t; },Math.max(0,perfAt-performance.now()));
 }
-function syncStart(aTrack){
+async function syncStart(aTrack){
   if(!SYNC.on) return;
-  audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)(); resumeAudio();
+  if(!aTrack||aTrack.readyState!=="live"){ alert("Тест синхрона: микрофон не пишется — замерять нечего. Останови дубль и проверь микрофон."); return; }
+  audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+  try{ await audioCtx.resume(); }catch(e){}
+  if(audioCtx.state!=="running"){ alert("Тест синхрона: звук в колонки не запустился ("+audioCtx.state+")."); return; }
   let mic={}; try{mic=aTrack?aTrack.getSettings():{};}catch(e){}
   SYNC.white=false;
   SYNC.log={ua:navigator.userAgent,mime:rec&&rec.mimeType,canvas:[canvas.width,canvas.height],mic,
