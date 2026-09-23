@@ -1069,6 +1069,7 @@ function drawFrame(){
   if(st.burnIn) drawBurnIn(ctx,cw,ch);
   if(!st.camFull && (inkBySlide.get(st.i)||[]).length) drawInk(ctx,cw,ch);
   if(laserOn && !st.camFull) drawLaser(ctx,cw,ch);
+  if(SYNC.on&&recording) drawSyncMark(ctx,cw);
 }
 function drawBurnIn(ctx,cw,ch){
   const s=SLIDES[st.i]; if(!s.plain) return;
@@ -1467,11 +1468,50 @@ async function startRec(){
       }).catch(()=>{ recWriteFailed(S); if(S.ix)S.ix.state.ok=false; S.chunks.push(e.data); });
     };
     rec.onerror=ev=>{ setSaveMsg("сбой записи: "+((ev&&ev.error&&ev.error.name)||"неизвестная ошибка"),true); };
-    rec.onstop=()=>{ finishRec(S); };
+    rec.onstop=()=>{ S.syncLog=syncStop(); finishRec(S); };
     const mw=$("#micwarn"); if(mw) mw.style.display=hasAudio?"none":"inline";
     await runCountdown(3);
     rec.start(1000);recording=true;recPaused=false;recAccum=0;recLast=Date.now();slideAccum=0;slideLast=Date.now();updateRecUI();
+    syncStart(aTrack);
   } finally { starting=false; }
+}
+
+/* ======== ТЕСТ СИНХРОНА (studio.html?synctest) ========
+   Диагностика нарастающего расхождения звука и видео. Каждые 10 с квадрат в
+   левом верхнем углу меняет цвет, и в тот же момент — по часам звукового
+   вывода, а не таймера — в колонки уходит короткий щелчок. Микрофон слышит его
+   через воздух, то есть весь настоящий путь звука. По файлу потом видно, как
+   расходятся смена квадрата и щелчок от начала к концу записи. Рядом с дублем
+   ложится <имя>.synctest.json: что сообщили микрофон, звук и MediaRecorder. */
+const SYNC={on:new URLSearchParams(location.search).has("synctest"),white:false,timer:null,log:null};
+function drawSyncMark(ctx,cw){const sz=Math.round(cw*0.06);ctx.fillStyle=SYNC.white?"#fff":"#000";ctx.fillRect(0,0,sz,sz);}
+function syncTick(){
+  if(!audioCtx||!recording||recPaused) return;
+  const when=audioCtx.currentTime+0.15, o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.frequency.value=2000; g.gain.setValueAtTime(0.9,when); g.gain.setValueAtTime(0,when+0.03);
+  o.connect(g).connect(audioCtx.destination); o.start(when); o.stop(when+0.05);
+  let perfAt=performance.now()+150;
+  try{const ts=audioCtx.getOutputTimestamp(); if(ts&&ts.performanceTime) perfAt=ts.performanceTime+(when-ts.contextTime)*1000;}catch(e){}
+  const n=SYNC.log.ticks.length;
+  setTimeout(()=>{SYNC.white=!SYNC.white;},Math.max(0,perfAt-performance.now()));
+  SYNC.log.ticks.push({n,perfAt:+perfAt.toFixed(1),recMs:recAccum+(Date.now()-recLast)});
+}
+function syncStart(aTrack){
+  if(!SYNC.on) return;
+  audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)(); resumeAudio();
+  let mic={}; try{mic=aTrack?aTrack.getSettings():{};}catch(e){}
+  SYNC.white=false;
+  SYNC.log={ua:navigator.userAgent,mime:rec&&rec.mimeType,canvas:[canvas.width,canvas.height],mic,
+    ctxRate:audioCtx.sampleRate,baseLatency:audioCtx.baseLatency,outputLatency:audioCtx.outputLatency,
+    startPerf:+performance.now().toFixed(1),ticks:[]};
+  SYNC.timer=setInterval(syncTick,10000);
+}
+function syncStop(){ if(SYNC.timer){clearInterval(SYNC.timer);SYNC.timer=null;} const l=SYNC.log; SYNC.log=null; if(l) l.stopPerf=+performance.now().toFixed(1); return l; }
+async function writeSyncLog(S){
+  if(!S.syncLog) return;
+  const blob=new Blob([JSON.stringify(S.syncLog,null,1)],{type:"application/json"}), fn=S.name+".synctest.json";
+  try{ if(!S.dir) throw 0; const w=await (await S.dir.getFileHandle(fn,{create:true})).createWritable(); await w.write(blob); await w.close(); }
+  catch(e){ saveBlobAs(blob,fn); }
 }
 
 /* Закрытие дубля. Пока оно идёт, saving держит предупреждение о закрытии
@@ -1515,6 +1555,7 @@ async function finishRec(S){
     }
     S.chunks=[];
     await writeMarkers(S);
+    if(!S.discard) await writeSyncLog(S);
     setSaveMsg(S.failed?"сохранено скачиванием: "+S.name+S.ext:"сохранено: "+S.name+S.ext,S.failed);
   } finally {
     saving=false;

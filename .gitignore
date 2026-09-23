@@ -9,3 +9,6 @@ pdf-to-frames.command
 pptx-to-pdf.command
 to-mp4.command
 .markdownlint.json
+
+# Дубли для разбора — не публикуются
+temp/
