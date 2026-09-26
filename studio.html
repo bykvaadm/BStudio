@@ -1500,7 +1500,18 @@ function syncTick(){
   try{const ts=audioCtx.getOutputTimestamp(); if(ts&&ts.performanceTime) perfAt=ts.performanceTime+(when-ts.contextTime)*1000;}catch(e){}
   const t={n:SYNC.log.ticks.length,perfAt:+perfAt.toFixed(1),recMs:recAccum+(Date.now()-recLast),white:!SYNC.white,drawAt:null};
   SYNC.log.ticks.push(t);
-  setTimeout(()=>{ if(!recording) return; if(recPaused){t.paused=true;return;} SYNC.white=t.white; SYNC.pending=t; },Math.max(0,perfAt-performance.now()));
+  setTimeout(()=>{ if(!recording) return; if(recPaused){t.paused=true;return;} SYNC.white=t.white; SYNC.pending=t; syncBadge(); },Math.max(0,perfAt-performance.now()));
+}
+/* Холст записи на экране не виден, поэтому режим показывает себя отдельно:
+   плашка в углу и квадрат, который меняет цвет вместе с записываемым. */
+function syncBadge(){
+  if(!SYNC.on) return;
+  let b=document.getElementById("syncbadge");
+  if(!b){ b=document.createElement("div"); b.id="syncbadge";
+    b.style.cssText="position:fixed;left:12px;top:12px;z-index:9999;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:9px;background:rgba(22,26,35,.92);border:1px solid #2a2e39;color:#e8e9ec;font:13px -apple-system,Segoe UI,Roboto,sans-serif;pointer-events:none";
+    b.innerHTML='<i style="width:18px;height:18px;border:1px solid #9aa0a8;display:inline-block"></i><span></span>'; document.body.appendChild(b); }
+  b.querySelector("i").style.background=SYNC.white?"#fff":"#000";
+  b.querySelector("span").textContent=recording?"тест синхрона: пишется, щелчок каждые 10 с":"тест синхрона включён — начни запись";
 }
 async function syncStart(aTrack){
   if(!SYNC.on) return;
@@ -1513,9 +1524,9 @@ async function syncStart(aTrack){
   SYNC.log={ua:navigator.userAgent,mime:rec&&rec.mimeType,canvas:[canvas.width,canvas.height],mic,
     ctxRate:audioCtx.sampleRate,baseLatency:audioCtx.baseLatency,outputLatency:audioCtx.outputLatency,
     startPerf:+performance.now().toFixed(1),ticks:[]};
-  SYNC.timer=setInterval(syncTick,10000);
+  SYNC.timer=setInterval(syncTick,10000); syncBadge();
 }
-function syncStop(){ if(SYNC.timer){clearInterval(SYNC.timer);SYNC.timer=null;} const l=SYNC.log; SYNC.log=null; if(l) l.stopPerf=+performance.now().toFixed(1); return l; }
+function syncStop(){ if(SYNC.timer){clearInterval(SYNC.timer);SYNC.timer=null;} SYNC.white=false; setTimeout(syncBadge,0); const l=SYNC.log; SYNC.log=null; if(l) l.stopPerf=+performance.now().toFixed(1); return l; }
 async function writeSyncLog(S){
   if(!S.syncLog) return;
   const blob=new Blob([JSON.stringify(S.syncLog,null,1)],{type:"application/json"}), fn=S.name+".synctest.json";
@@ -1808,7 +1819,7 @@ function startStudio(){
   const ll=$("#laserlive");if(ll)ll.style.display="block";
   applyFmt();applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
-  if(!started){ started=true; bindStudio(); bindGroupFolding(); bindSliderFolding(); requestAnimationFrame(loop); }
+  if(!started){ started=true; bindStudio(); bindGroupFolding(); bindSliderFolding(); requestAnimationFrame(loop); syncBadge(); }
 }
 
 bindSetup();
