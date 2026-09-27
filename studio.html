@@ -407,6 +407,8 @@ async function findDeckSources(dirHandle){
       if(h.kind!=="file") continue;
       if(/\.pdf$/i.test(name))  out.push({kind:"pdf",  file:h, name:(label?label+"/":"")+name, sub:label||null});
       if(/\.pptx$/i.test(name)) out.push({kind:"pptx", file:h, name:(label?label+"/":"")+name, sub:label||null});
+      if(/\.html?$/i.test(name) && !/^(studio|editor|index)\.html$/i.test(name))
+        out.push({kind:"html", file:h, dir, name:(label?label+"/":"")+name, sub:label||null});
     }
   };
   // Просто папка с картинками — тоже дека. Имена не обязаны быть p-NNN.png,
@@ -442,7 +444,7 @@ async function findDeckSources(dirHandle){
   // одного слайда. Такие уезжают в конец списка, но из него не исчезают.
   const COVER = 5;                       // меньше этого — считаем обложкой
   const rank = x => x.kind==="png"  ? (x.count>=COVER ? 0 : 3)
-                  : x.kind==="pdf"  ? 1
+                  : x.kind==="pdf"||x.kind==="html" ? 1
                   : x.kind==="imgs" ? (x.count>=COVER ? 2 : 4)
                   : 5;                        // pptx последний: его не нарисовать
   out.sort((a,b)=> rank(a)-rank(b)
@@ -455,6 +457,7 @@ async function findDeckSources(dirHandle){
 function sourceLabel(src){
   if(src.kind==="png")  return `${src.name} — кадры, ${src.count} шт.`;
   if(src.kind==="pdf")  return `${src.name} — PDF`;
+  if(src.kind==="html") return `${src.name} — HTML-дека, импорт в кадры`;
   if(src.kind==="imgs") return `${src.name} — картинки, ${src.count} шт.`;
   return `${src.name} — PPTX, нужна конвертация`;
 }
@@ -638,6 +641,109 @@ function pdfWarningText(){
   return "Браузер отрисовал PDF с оговорками ("+PDF_WARNINGS.length+"). Сверьте цвета со слайдами перед записью.";
 }
 
+/* ---------- HTML-дека Claude Design → кадры ----------
+   То же, что делает render.js, но без Node и терминала: дека открывается прямо
+   в студии, слайды листаются через <deck-stage>.goTo(), каждый снимается и
+   ложится в deck_frames/ рядом с HTML — p-NN.png + manifest.json, в том же
+   формате. Дальше урок записывается как обычная дека из кадров, офлайн.
+
+   Сфотографировать кусок страницы браузер сам не умеет, поэтому снимаем свою же
+   вкладку (getDisplayMedia): Chrome один раз спросит «Поделиться этой вкладкой».
+   Кадр обрезается по iframe с декой (Region Capture), iframe занимает окно
+   целиком — на Retina это ровно 1920×1080 и больше; если окно маленькое,
+   предупреждаем, а не молча отдаём мыло. Если обрезанный поток так и не выдал
+   ни одного кадра (бывает на некоторых сборках Chrome) — снимаем обрезку и
+   считаем координаты сами, а не виснем навсегда. */
+function deckLabelId(l){ const m=(l||"").match(/([0-9]+\.[0-9]+)/); return m?m[1]:(l||"").trim().toLowerCase(); }
+async function htmlDeckToFrames(src, say){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia) throw new Error("Этот браузер не умеет снимать вкладку — нужен Chrome или Edge.");
+  // Разрешение — первым делом: Chrome даёт его только сразу после нажатия кнопки.
+  say("Разреши студии снять эту вкладку: в окне Chrome выбери «Эта вкладка» → «Поделиться».");
+  let stream;
+  try{ stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"browser",frameRate:30},audio:false,preferCurrentTab:true,selfBrowserSurface:"include",surfaceSwitching:"exclude"}); }
+  catch(e){ throw new Error("Без разрешения снять вкладку HTML-деку в кадры не перевести. Нажми «Начать» ещё раз и выбери «Эта вкладка»."); }
+  const track=stream.getVideoTracks()[0];
+  const wrap=document.createElement("div"), note=document.createElement("div"), fr=document.createElement("iframe"), vid=document.createElement("video");
+  wrap.style.cssText="position:fixed;inset:0;z-index:100000;background:#000;display:flex;align-items:center;justify-content:center";
+  note.style.cssText="position:fixed;left:12px;bottom:10px;z-index:100001;color:#9aa0a8;font:13px -apple-system,Segoe UI,Roboto,sans-serif";
+  const fit=()=>{ const W=innerWidth, H=innerHeight-32, w=Math.min(W,H*16/9); fr.style.width=Math.floor(w)+"px"; fr.style.height=Math.floor(w*9/16)+"px"; };
+  fr.style.cssText="border:0;background:#fff;display:block"; fit();
+  // <video> держим в документе, но невидимым: без этого requestVideoFrameCallback
+  // на некоторых сборках Chrome не срабатывает вовсе, потому что элемент вне
+  // дерева рендера не получает кадров композитора. display:none тоже не годится
+  // (та же причина) — прячем непрозрачностью и уводим за край экрана.
+  vid.style.cssText="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+  wrap.appendChild(fr); document.body.appendChild(wrap); document.body.appendChild(note); document.body.appendChild(vid);
+  const url=URL.createObjectURL(await src.file.getFile());
+  const cleanup=()=>{ try{track.stop();}catch(e){} wrap.remove(); note.remove(); vid.remove(); URL.revokeObjectURL(url); };
+  try{
+    note.textContent="Открываю деку…";
+    fr.src=url;
+    await new Promise(r=>{ fr.onload=r; });
+    const win=fr.contentWindow, doc=()=>fr.contentDocument;
+    // Упакованная дека сначала распаковывает себя и только потом создаёт <deck-stage>.
+    let deck=null;
+    for(let t=0;t<120&&!deck;t++){ await new Promise(r=>setTimeout(r,250)); const d=doc()&&doc().querySelector("deck-stage"); if(d&&typeof d.goTo==="function"&&(d.length|0)>0) deck=d; }
+    if(!deck) throw new Error("В «"+src.name+"» не нашёл деку Claude Design (<deck-stage>). Это точно выгрузка деки одним HTML-файлом?");
+    // Без этого дека сама вписывает себя в контейнер с полями (letterbox), и в
+    // кадр вместо слайда целиком попадает слайд с чёрными полями по краям.
+    deck.setAttribute("noscale","");
+    try{ await doc().fonts.ready; }catch(e){}
+    // Прячем всё, что не слайд: номера, панели, служебные кнопки — как render.js.
+    const css=doc().createElement("style");
+    css.textContent="*{animation:none!important;transition:none!important;scroll-behavior:auto!important} #tweaks-root,.tweaks-root,.tweaks-panel{display:none!important} .slide-num{display:none!important}";
+    doc().head.appendChild(css); doc().body.classList.add("hide-video");
+    try{ const sr=deck.shadowRoot; if(sr){ const ss=doc().createElement("style"); ss.textContent=".export-hidden,.overlay,.rail,.ctxmenu,.rail-resize,.confirm-backdrop{display:none!important}"; sr.appendChild(ss); } }catch(e){}
+    const labels=[...doc().querySelectorAll("deck-stage > section")].map(sec=>{ const n=sec.querySelector(".slide-num"); return n?n.textContent.trim():""; });
+    const n=deck.length|0;
+    // Снимаем только iframe. Region Capture есть в Chrome; без него — обрезка по координатам.
+    let cropped=false;
+    try{ if(window.CropTarget&&track.cropTo){ await track.cropTo(await CropTarget.fromElement(fr)); cropped=true; } }catch(e){}
+    vid.muted=true; vid.srcObject=stream; await vid.play();
+    // Кадр может не прийти никогда — с ограничением по времени, а не бесконечно:
+    // на некоторых сборках Chrome обрезанный поток (Region Capture) молчит.
+    const nextFrame=(ms)=>new Promise(r=>{
+      let done=false; const t=setTimeout(()=>{ if(!done){done=true; r(false);} }, ms||4000);
+      if(vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(()=>{ if(!done){done=true; clearTimeout(t); r(true);} });
+      else setTimeout(()=>{ if(!done){done=true; clearTimeout(t); r(true);} },120);
+    });
+    // Проба первого кадра: если обрезанный поток так и не задышал — снимаем обрезку
+    // и переходим на съёмку всей вкладки с обрезкой по координатам (см. ниже).
+    if(!(await nextFrame(8000))){
+      if(cropped){ try{ await track.cropTo(undefined); }catch(e){} cropped=false; }
+      if(!(await nextFrame(6000))) throw new Error("Chrome не отдаёт кадры снятой вкладки. Попробуй ещё раз и не сворачивай окно во время съёмки.");
+    }
+    const out=document.createElement("canvas"); out.width=1920; out.height=1080;
+    const octx=out.getContext("2d",{alpha:false});
+    let dir; try{ dir=await src.dir.getDirectoryHandle("deck_frames",{create:true}); }catch(e){ throw new Error("Не могу создать deck_frames/ рядом с «"+src.name+"»: "+e.message); }
+    const manifest={slides:[]}, urls=[]; let lowRes=0;
+    for(let i=0;i<n;i++){
+      note.textContent="Снимаю слайд "+(i+1)+" из "+n+"… не трогай окно"; say("Импорт HTML-деки: слайд "+(i+1)+" из "+n+"…");
+      deck.goTo(i);
+      await new Promise(r=>setTimeout(r,650)); await nextFrame(4000); await nextFrame(4000);
+      const vw=vid.videoWidth, vh=vid.videoHeight;
+      if(cropped){ octx.drawImage(vid,0,0,vw,vh,0,0,1920,1080); if(vw<1900) lowRes=Math.max(lowRes,1); }
+      else{
+        // Кадр вкладки = её видимая область; переводим CSS-координаты iframe в пиксели кадра.
+        const r=fr.getBoundingClientRect(), k=vw/innerWidth;
+        octx.drawImage(vid,r.left*k,r.top*k,r.width*k,r.height*k,0,0,1920,1080); if(r.width*k<1900) lowRes=1;
+      }
+      const blob=await new Promise(r=>out.toBlob(r,"image/png"));
+      const file="p-"+String(i+1).padStart(2,"0")+".png";
+      const w=await (await dir.getFileHandle(file,{create:true})).createWritable(); await w.write(blob); await w.close();
+      manifest.slides.push({file,id:deckLabelId(labels[i]||"")}); urls.push(URL.createObjectURL(blob));
+    }
+    const mw=await (await dir.getFileHandle("manifest.json",{create:true})).createWritable();
+    await mw.write(JSON.stringify(manifest,null,2)); await mw.close();
+    // Дека могла укоротиться: лишние кадры прошлого импорта иначе уехали бы в показ
+    // при следующем открытии deck_frames без manifest. Чистим после успешного импорта.
+    const keep=new Set(manifest.slides.map(m=>m.file.toLowerCase()));
+    for await (const [name] of dir.entries()) if(/^p-\d+\.png$/i.test(name)&&!keep.has(name.toLowerCase())){ try{ await dir.removeEntry(name); }catch(e){} }
+    if(lowRes) setTimeout(()=>alert("Кадры сняты с разрешением меньше 1920 по ширине — окно Chrome было маленьким. Для чётких слайдов разверни окно на весь экран и выбери HTML-деку ещё раз."),0);
+    return {urls, manifest};
+  } finally { cleanup(); }
+}
+
 /* Размер «области съёмки»: по умолчанию 1920×1080, но если слайды другого
    размера (скриншоты, вертикальные картинки, дека 4:3), кадр 16:9 добавит к ним
    чёрные поля. Поэтому запоминаем размер самой большой картинки деки — режим
@@ -654,7 +760,11 @@ async function loadLesson(lesson, src){
     "PDF положи рядом — студия подхватит его сама.");
 
   let imgs=[], manifest=null;
-  if(src.kind==="pdf"){
+  if(src.kind==="html"){
+    const msg=document.querySelector("#setupMsg");
+    const r=await htmlDeckToFrames(src,(t)=>{ if(msg) msg.textContent=t; });
+    imgs=r.urls; manifest=r.manifest;
+  }else if(src.kind==="pdf"){
     const msg=document.querySelector("#setupMsg");
     imgs=await pdfToUrls(src.file,(n,total,phase)=>{ if(msg) msg.textContent=phase==="поля"
       ? "Ищу поля вокруг слайдов: страница "+n+" из "+total+"…"
@@ -748,7 +858,7 @@ async function startSelected(){
   const idx=+$("#lessonSel").value; const lesson=LESSONS[idx];
   const src=(lesson.sources||[])[+$("#sourceSel").value];
   if(!src||src.kind==="pptx"){ $("#setupMsg").textContent="Этот источник студия не нарисует — сконвертируйте PPTX в PDF (pptx-to-pdf.command)."; $("#setupMsg").className="msg err"; return; }
-  $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":"Загружаю кадры…"; $("#setupMsg").className="msg";
+  $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":(src.kind==="html")?"Открываю HTML-деку…":"Загружаю кадры…"; $("#setupMsg").className="msg";
   try{
     const next=await loadLesson(lesson, src);
     releaseDeck(); SLIDES=next; CURLESSON=lesson;
