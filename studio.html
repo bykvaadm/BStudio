@@ -663,9 +663,15 @@ async function htmlDeckToFrames(src, say){
   try{ stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"browser",frameRate:30},audio:false,preferCurrentTab:true,selfBrowserSurface:"include",surfaceSwitching:"exclude"}); }
   catch(e){ throw new Error("Без разрешения снять вкладку HTML-деку в кадры не перевести. Нажми «Начать» ещё раз и выбери «Эта вкладка»."); }
   const track=stream.getVideoTracks()[0];
-  const wrap=document.createElement("div"), note=document.createElement("div"), fr=document.createElement("iframe"), vid=document.createElement("video");
-  wrap.style.cssText="position:fixed;inset:0;z-index:100000;background:#000;display:flex;align-items:center;justify-content:center";
-  note.style.cssText="position:fixed;left:12px;bottom:10px;z-index:100001;color:#9aa0a8;font:13px -apple-system,Segoe UI,Roboto,sans-serif";
+  const wrap=document.createElement("div"), note=document.createElement("div"), stage=document.createElement("div"), fr=document.createElement("iframe"), vid=document.createElement("video");
+  // Строка статуса — своя полоса СВЕРХУ, а не поверх деки: если текст лежит
+  // внутри прямоугольника iframe (пусть даже просто визуально соседствует по
+  // низу), Region Capture его тоже снимает — обрезка идёт по границам самого
+  // iframe, а не по видимому контенту внутри него. Полоса и iframe в разных
+  // строках flex-колонки — пересечения их прямоугольников быть не может.
+  wrap.style.cssText="position:fixed;inset:0;z-index:100000;background:#000;display:flex;flex-direction:column";
+  note.style.cssText="flex:0 0 32px;display:flex;align-items:center;padding:0 12px;box-sizing:border-box;color:#9aa0a8;font:13px -apple-system,Segoe UI,Roboto,sans-serif";
+  stage.style.cssText="flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center";
   const fit=()=>{ const W=innerWidth, H=innerHeight-32, w=Math.min(W,H*16/9); fr.style.width=Math.floor(w)+"px"; fr.style.height=Math.floor(w*9/16)+"px"; };
   fr.style.cssText="border:0;background:#fff;display:block"; fit();
   // <video> держим в документе, но невидимым: без этого requestVideoFrameCallback
@@ -673,9 +679,9 @@ async function htmlDeckToFrames(src, say){
   // дерева рендера не получает кадров композитора. display:none тоже не годится
   // (та же причина) — прячем непрозрачностью и уводим за край экрана.
   vid.style.cssText="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
-  wrap.appendChild(fr); document.body.appendChild(wrap); document.body.appendChild(note); document.body.appendChild(vid);
+  stage.appendChild(fr); wrap.appendChild(note); wrap.appendChild(stage); document.body.appendChild(wrap); document.body.appendChild(vid);
   const url=URL.createObjectURL(await src.file.getFile());
-  const cleanup=()=>{ try{track.stop();}catch(e){} wrap.remove(); note.remove(); vid.remove(); URL.revokeObjectURL(url); };
+  const cleanup=()=>{ try{track.stop();}catch(e){} wrap.remove(); vid.remove(); URL.revokeObjectURL(url); };
   try{
     note.textContent="Открываю деку…";
     fr.src=url;
@@ -691,7 +697,7 @@ async function htmlDeckToFrames(src, say){
     try{ await doc().fonts.ready; }catch(e){}
     // Прячем всё, что не слайд: номера, панели, служебные кнопки — как render.js.
     const css=doc().createElement("style");
-    css.textContent="*{animation:none!important;transition:none!important;scroll-behavior:auto!important} #tweaks-root,.tweaks-root,.tweaks-panel{display:none!important} .slide-num{display:none!important}";
+    css.textContent="*{animation:none!important;transition:none!important;scroll-behavior:auto!important} #tweaks-root,.tweaks-root,.tweaks-panel{display:none!important} .slide-num{display:none!important} #__claude_design_branding{display:none!important}";
     doc().head.appendChild(css); doc().body.classList.add("hide-video");
     try{ const sr=deck.shadowRoot; if(sr){ const ss=doc().createElement("style"); ss.textContent=".export-hidden,.overlay,.rail,.ctxmenu,.rail-resize,.confirm-backdrop{display:none!important}"; sr.appendChild(ss); } }catch(e){}
     const labels=[...doc().querySelectorAll("deck-stage > section")].map(sec=>{ const n=sec.querySelector(".slide-num"); return n?n.textContent.trim():""; });
