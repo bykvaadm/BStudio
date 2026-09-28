@@ -691,10 +691,14 @@ function srcBasename(p){ return String(p||"").split("/").pop(); }
 // Экран физически меньше 1920 точек, или окно уже развёрнуто на весь экран —
 // в обоих случаях советовать «разверни» уже некуда и незачем, это не поможет.
 function isWindowMaximized(){
-  try{ return innerWidth>=screen.availWidth-2 && innerHeight>=screen.availHeight-2; }catch(e){ return false; }
+  // По внешнему размеру окна: innerHeight меньше экрана на панели самого Chrome
+  // даже у развёрнутого окна.
+  try{ return outerWidth>=screen.availWidth-8 && outerHeight>=screen.availHeight-8; }catch(e){ return false; }
 }
 function htmlHintText(){
-  try{ if(screen.width*(window.devicePixelRatio||1) < 1920) return "Экран меньше 1920 точек — кадры будут чуть мягче."; }catch(e){}
+  // Под деку остаётся экран минус панели Chrome и полоса статуса импорта:
+  // по высоте нужен запас сверх 1080.
+  try{ const k=window.devicePixelRatio||1; if(screen.width*k<1920 || screen.height*k<1200) return "Экран меньше, чем нужно для 1920×1080, — кадры будут чуть мягче."; }catch(e){}
   return "Chrome спросит, какую вкладку показать — выбери эту.";
 }
 
@@ -751,6 +755,7 @@ function injectDeckBridge(html){
 }
 
 async function htmlDeckToFrames(src, say){
+  let lockDir=null, lockGen=0;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia) throw new Error("Этот браузер не умеет снимать вкладку — нужен Chrome или Edge.");
   // Без requestVideoFrameCallback нечем достоверно проверить, что кадр вообще
   // пришёл — не притворяемся, что тишина в 120мс это готовый кадр (так было
@@ -898,7 +903,17 @@ async function htmlDeckToFrames(src, say){
     // всё ещё указывает на старые файлы, а новые (частично снятые) остаются
     // лежать сиротами на диске и будут выметены при следующем успешном
     // импорте — .import-tmp и перенос файлов больше не нужны.
-    const gen=Date.now();
+    /* Замок: два импорта в одну папку (две вкладки) выметали бы кадры друг
+       друга. Свежий замок чужого импорта — отказ; зависший дольше 10 минут
+       (вкладку закрыли посреди съёмки) — считается брошенным. */
+    const gen=Date.now()*1000+Math.floor(Math.random()*1000);
+    try{
+      const lf=await (await framesDir.getFileHandle(".import-lock")).getFile();
+      const t=+(await lf.text())||0;
+      if(Date.now()-Math.floor(t/1000)<600000) throw new Error("Эта дека уже импортируется в другой вкладке. Дождись её окончания или закрой ту вкладку.");
+    }catch(e){ if(e&&/другой вкладке/.test(e.message)) throw e; }
+    { const lw=await (await framesDir.getFileHandle(".import-lock",{create:true})).createWritable(); await lw.write(String(gen)); await lw.close(); }
+    lockDir=framesDir; lockGen=gen;
     const manifest={source:srcBase, slides:[]}; let lowRes=0;
     for(let i=0;i<n;i++){
       note.textContent="Снимаю слайд "+(i+1)+" из "+n+"… не трогай окно"; say("Импорт HTML-деки: слайд "+(i+1)+" из "+n+"…");
@@ -918,6 +933,8 @@ async function htmlDeckToFrames(src, say){
     // Успех подтверждён записью manifest.json — теперь можно выметать всё,
     // чего в новом манифесте нет: и старое поколение, и сирот от прошлых сбоев.
     const keep=new Set(manifest.slides.map(m=>m.file.toLowerCase()));
+    // Страховка: всё, что назван manifest на диске сейчас, тоже не трогаем.
+    try{ const dm=JSON.parse(await (await (await framesDir.getFileHandle("manifest.json")).getFile()).text()); (dm.slides||[]).forEach(m=>m&&m.file&&keep.add(String(m.file).toLowerCase())); }catch(e){}
     for await (const [name,h] of framesDir.entries()){
       if(h.kind==="file" && /^p-\d+\.png$/i.test(name) && !keep.has(name.toLowerCase())){ try{ await framesDir.removeEntry(name); }catch(e){} }
     }
@@ -934,7 +951,11 @@ async function htmlDeckToFrames(src, say){
     // успешный импорт, а сейчас старый набор должен остаться нетронутым.
     for(const u of urls){ try{URL.revokeObjectURL(u);}catch(e2){} }
     throw e;
-  } finally { cleanup(); }
+  } finally {
+    cleanup();
+    // Снимаем только свой замок: если его уже перехватил другой импорт, не трогаем.
+    if(lockDir){ try{ const t=await (await (await lockDir.getFileHandle(".import-lock")).getFile()).text(); if(+t===lockGen) await lockDir.removeEntry(".import-lock"); }catch(e){} }
+  }
 }
 
 /* Размер «области съёмки»: по умолчанию 1920×1080, но если слайды другого
@@ -983,10 +1004,18 @@ async function loadLesson(lesson, src){
       const by=new Map(files.map(([n,h])=>[n.toLowerCase(),h]));
       const acc=[];
       for(const m of manifest.slides){ const h=m&&m.file&&by.get(String(m.file).toLowerCase()); if(h)acc.push([m.file,h]); }
+      if(acc.length && acc.length<manifest.slides.length)
+        throw new Error("В «"+src.name+"» не хватает "+(manifest.slides.length-acc.length)+" кадр(ов) из manifest.json. Импортируй деку заново.");
       if(acc.length) picked=acc;
     }
     if(picked) files.length=0, files.push(...picked);
-    else files.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
+    else{
+      // Кадры импорта HTML-деки (p-<длинная метка поколения>NN.png) законны
+      // только через manifest.json; без него это сироты оборванного импорта,
+      // и смешивать их со старыми p-01.png нельзя.
+      if(frames){ const legacy=files.filter(([n])=>!/^p-\d{12,}\.png$/i.test(n)); files.length=0; files.push(...legacy); }
+      files.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
+    }
     for(const [name,h] of files){ imgs.push(URL.createObjectURL(await h.getFile())); }
   }
   // Пустой источник до студии пускать нельзя: она рисует SLIDES[0] сразу.
