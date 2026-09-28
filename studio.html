@@ -1140,7 +1140,7 @@ async function startSelected(){
   $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":(src.kind==="html")?"Открываю HTML-деку…":"Загружаю кадры…"; $("#setupMsg").className="msg";
   try{
     const next=await loadLesson(lesson, src);
-    releaseDeck(); SLIDES=next; CURLESSON=lesson;
+    releaseDeck(); SLIDES=next; CURLESSON=lesson; hideFolderBtn();
     /* Штрихи ключуются номером слайда, поэтому при смене деки их надо снести:
        иначе рисунок со слайда 1 прошлого урока всплывёт на слайде 1 нового и
        уедет в запись. */
@@ -2066,18 +2066,22 @@ function recWriteFailed(S){
    перетащить оттуда в монтажку. Выбор в окне ни на что не влияет — «Отмена» и
    «Открыть» одинаково просто закрывают его. */
 let folderTake=null;
-function showFolderFor(S){
+async function showFolderFor(S){
   if(!window.showOpenFilePicker) return;
-  folderTake={dir:S.dir, name:S.actualVideoName};
+  // Кнопка — только про открытый сейчас урок: дубль, досохранившийся после
+  // смены урока, её не показывает.
+  if(S.dir!==(CURLESSON&&CURLESSON.dirHandle)) return;
+  // Handle готовим заранее: окно выбора Chrome открывает только сразу после
+  // клика, долгий await внутри обработчика мог бы это «разрешение» съесть.
+  let startIn=S.dir; try{ startIn=await S.dir.getFileHandle(S.actualVideoName); }catch(e){}
+  folderTake={startIn};
   const b=$("#showFolderBtn"); if(b) b.style.display="";
 }
 function hideFolderBtn(){ folderTake=null; const b=$("#showFolderBtn"); if(b) b.style.display="none"; }
 async function openTakeFolder(){
   if(!folderTake) return;
-  let startIn=folderTake.dir;
-  try{ startIn=await folderTake.dir.getFileHandle(folderTake.name); }catch(e){}
-  try{ await window.showOpenFilePicker({startIn, multiple:false}); }
-  catch(e){ /* «Отмена» — это AbortError, это нормально */ }
+  try{ await window.showOpenFilePicker({startIn:folderTake.startIn, multiple:false}); }
+  catch(e){ if(e&&e.name!=="AbortError") setSaveMsg("⚠ не открылось окно папки",true,"Окно выбора файла не открылось: "+((e&&e.message)||e)); }
 }
 async function startRec(){
   if(recording||starting||saving||remuxing)return; starting=true;
@@ -2261,7 +2265,7 @@ async function finishRec(S){
     S.chunks=[];
     await writeMarkers(S);
     if(!S.discard) await writeSyncLog(S);
-    if(S.dir && !S.failed) showFolderFor(S);
+    if(S.dir && !S.failed) await showFolderFor(S);
     if(S.remuxFailed && S.dir){
       setSaveMsg("⚠ не готов для монтажа — жми 🔁",true,
         "Сохранено: "+S.actualVideoName+" — играется, но для монтажа (DaVinci и т.п.) не готов. "
