@@ -691,13 +691,21 @@ function srcBasename(p){ return String(p||"").split("/").pop(); }
 /* Помог бы полноэкранный режим: экран достаточно большой, а сейчас окно не
    во весь экран (панели Chrome и системы съедают высоту даже у развёрнутого
    окна — кадр 1920×1080 целиком помещается только в полноэкранном режиме). */
+/* Масштаб страницы (zoom) меняет и devicePixelRatio, и innerHeight, поэтому
+   всё меряем в величинах, от него не зависящих: outer-размеры окна и screen —
+   в точках системы, а плотность экрана — devicePixelRatio, делённый на zoom
+   (zoom ≈ outerWidth/innerWidth). */
+function screenScale(){
+  const dpr=window.devicePixelRatio||1, z=(innerWidth>0 && outerWidth>0) ? outerWidth/innerWidth : 1;
+  return (z>0.25 && z<5) ? dpr/z : dpr;
+}
 function fullscreenWouldHelp(){
-  try{ const k=window.devicePixelRatio||1; return screen.width*k>=1920 && screen.height*k>=1200 && innerHeight<screen.height-2; }catch(e){ return false; }
+  try{ const k=screenScale(); return screen.width*k>=1920 && screen.height*k>=1200 && outerHeight<screen.height-2; }catch(e){ return false; }
 }
 function htmlHintText(){
   // Под деку остаётся экран минус панели Chrome и полоса статуса импорта:
   // по высоте нужен запас сверх 1080.
-  try{ const k=window.devicePixelRatio||1; if(screen.width*k<1920 || screen.height*k<1200) return "На этом экране кадр 1920×1080 целиком не поместится — слайды выйдут чуть мягче."; }catch(e){}
+  try{ const k=screenScale(); if(screen.width*k<1920 || screen.height*k<1200) return "На этом экране кадр 1920×1080 целиком не поместится — слайды выйдут чуть мягче."; }catch(e){}
   return "Включи полноэкранный режим Chrome (на Mac — зелёная кнопка, на Windows — F11); Chrome спросит, какую вкладку показать — выбери эту.";
 }
 
