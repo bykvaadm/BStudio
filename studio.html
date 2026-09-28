@@ -959,12 +959,18 @@ async function loadLesson(lesson, src){
   // Речитатива может не быть вовсе — тогда все слайды просто без текста.
   const slides=lesson.scriptHandle ? parseScript(await (await lesson.scriptHandle.getFile()).text()) : [];
   const byId={}; slides.forEach(s=>byId[s.id]=s);
-  // manifest с id есть, но НИ ОДИН id не нашёлся в речитативе — разметка деки
-  // не совпадает с речитативом (например: дека без .slide-num/data-screen-label
-  // в нужном формате). Тогда id молчат на каждом слайде, и суфлёр был бы пуст
-  // целиком; вместо этого раздаём текст по порядку, как для декок без manifest.
-  const manifestIdsMatch = !!(manifest && manifest.slides && manifest.slides.some(m=>m && m.id && byId[m.id]));
-  const useManifestIds = !!(manifest && manifest.slides) && manifestIdsMatch;
+  // Правило строже, чем «хоть один совпал»: используем id из manifest, только
+  // если ВСЕ его непустые id нашлись в речитативе. «Хоть один» хрупко — если у
+  // деки метки вида «01 VM по расписанию» (так их в рантайме переписывает сам
+  // deck-stage, а не то, что лежит в исходной разметке статично), deckLabelId
+  // не выделит из них «N.M» и оставит их как есть; случайное совпадение первого
+  // слайда (например оба с одинаковым «титул») включило бы id-путь целиком, а
+  // остальные слайды с несовпавшими метками остались бы без текста молча. Если
+  // непустых id вовсе нет — тоже считаем, что разметка не совпадает, и отдаём
+  // текст по порядку, как для декок без manifest. render.js-деки, где все id
+  // совпадают, идут прежним id-путём без изменений.
+  const nonEmptyIds = (manifest && Array.isArray(manifest.slides)) ? manifest.slides.map(m=>m&&m.id).filter(Boolean) : [];
+  const useManifestIds = nonEmptyIds.length>0 && nonEmptyIds.every(id=>byId[id]);
   const data=[];
   for(let i=0;i<imgs.length;i++){
     let paras=[], isTitle=false, cam=null, sid="";
