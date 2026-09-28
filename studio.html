@@ -699,7 +699,7 @@ function htmlHintText(){
   // Под деку остаётся экран минус панели Chrome и полоса статуса импорта:
   // по высоте нужен запас сверх 1080.
   try{ const k=window.devicePixelRatio||1; if(screen.width*k<1920 || screen.height*k<1200) return "Экран меньше, чем нужно для 1920×1080, — кадры будут чуть мягче."; }catch(e){}
-  return "Chrome спросит, какую вкладку показать — выбери эту.";
+  return "Разверни окно на весь экран; Chrome спросит, какую вкладку показать — выбери эту.";
 }
 
 // Скрипт-мост живёт внутри песочницы и не разделяет область видимости со
@@ -755,7 +755,7 @@ function injectDeckBridge(html){
 }
 
 async function htmlDeckToFrames(src, say){
-  let lockDir=null, lockGen=0;
+  let lockDir=null, lockGen=0, releaseWebLock=null;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia) throw new Error("Этот браузер не умеет снимать вкладку — нужен Chrome или Edge.");
   // Без requestVideoFrameCallback нечем достоверно проверить, что кадр вообще
   // пришёл — не притворяемся, что тишина в 120мс это готовый кадр (так было
@@ -903,6 +903,18 @@ async function htmlDeckToFrames(src, say){
     // всё ещё указывает на старые файлы, а новые (частично снятые) остаются
     // лежать сиротами на диске и будут выметены при следующем успешном
     // импорте — .import-tmp и перенос файлов больше не нужны.
+    /* Файловый замок сам по себе не атомарен (две вкладки могут прочитать
+       «замка нет» одновременно). Внутри одного адреса студии настоящее
+       взаимное исключение даёт Web Locks: вторая вкладка его не получит. */
+    if(navigator.locks){
+      releaseWebLock=await new Promise(res=>{
+        navigator.locks.request("bstudio-deck-import",{ifAvailable:true},lock=>{
+          if(!lock){ res(null); return; }
+          return new Promise(done=>res(done));
+        });
+      });
+      if(!releaseWebLock) throw new Error("Эта дека уже импортируется в другой вкладке. Дождись её окончания или закрой ту вкладку.");
+    }
     /* Замок: два импорта в одну папку (две вкладки) выметали бы кадры друг
        друга. Свежий замок чужого импорта — отказ; зависший дольше 10 минут
        (вкладку закрыли посреди съёмки) — считается брошенным. */
@@ -924,7 +936,7 @@ async function htmlDeckToFrames(src, say){
       octx.drawImage(vid,0,0,vw,vh,0,0,1920,1080);
       if(vw<1920||vh<1080) lowRes=1;
       const blob=await new Promise(r=>out.toBlob(r,"image/png"));
-      const file="p-"+gen+String(i+1).padStart(2,"0")+".png";
+      const file="p-"+gen+String(i+1).padStart(3,"0")+".png";
       const w=await (await framesDir.getFileHandle(file,{create:true})).createWritable(); await w.write(blob); await w.close();
       manifest.slides.push({file,id:deckLabelId(labels[i]||"")}); urls.push(URL.createObjectURL(blob));
     }
@@ -942,7 +954,7 @@ async function htmlDeckToFrames(src, say){
     // «Разверни окно» подсказываем, только если окно и правда не развёрнуто:
     // на экране меньше 1920 точек разворачивать уже некуда, совет вводил бы в
     // заблуждение — в этом случае честно предупредили ещё до «Начать».
-    if(lowRes && !isWindowMaximized()) setTimeout(()=>alert("Кадры сняты меньше 1920×1080 — окно Chrome было не на весь экран. Разверни его на весь экран и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
+    if(lowRes && !isWindowMaximized()) setTimeout(()=>alert("Кадры сняты меньше 1920×1080 — окно Chrome было не на весь экран. Разверни его на весь экран (на Mac — зелёная кнопка в углу окна) и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
     return {urls, manifest};
   } catch(e){
     // Частично снятые кадры при неудаче не нужны — их blob-URL иначе держат
@@ -953,6 +965,7 @@ async function htmlDeckToFrames(src, say){
     throw e;
   } finally {
     cleanup();
+    if(releaseWebLock) releaseWebLock();
     // Снимаем только свой замок: если его уже перехватил другой импорт, не трогаем.
     if(lockDir){ try{ const t=await (await (await lockDir.getFileHandle(".import-lock")).getFile()).text(); if(+t===lockGen) await lockDir.removeEntry(".import-lock"); }catch(e){} }
   }
@@ -1004,7 +1017,7 @@ async function loadLesson(lesson, src){
       const by=new Map(files.map(([n,h])=>[n.toLowerCase(),h]));
       const acc=[];
       for(const m of manifest.slides){ const h=m&&m.file&&by.get(String(m.file).toLowerCase()); if(h)acc.push([m.file,h]); }
-      if(acc.length && acc.length<manifest.slides.length)
+      if(acc.length<manifest.slides.length)
         throw new Error("В «"+src.name+"» не хватает "+(manifest.slides.length-acc.length)+" кадр(ов) из manifest.json. Импортируй деку заново.");
       if(acc.length) picked=acc;
     }
@@ -1040,8 +1053,15 @@ async function loadLesson(lesson, src){
   // непустых id вовсе нет — тоже считаем, что разметка не совпадает, и отдаём
   // текст по порядку, как для декок без manifest. render.js-деки, где все id
   // совпадают, идут прежним id-путём без изменений.
+  // Порог — БОЛЬШЕ ПОЛОВИНЫ совпавших id. «Все» ломало реальные деки курса:
+  // в 7 из 8 есть слайды «демо», которых нет в речитативе, и раздача по
+  // порядку сдвигала текст на соседние кадры (замер 2026-09-28: у 01-linux
+  // чужой текст на 19 из 28). «Хоть один» ломало HTML-деку Claude Design:
+  // совпадал только «титул», и все остальные слайды оставались пустыми. При
+  // большинстве несовпавшие слайды просто без текста — как было всегда.
   const nonEmptyIds = (manifest && Array.isArray(manifest.slides)) ? manifest.slides.map(m=>m&&m.id).filter(Boolean) : [];
-  const useManifestIds = nonEmptyIds.length>0 && nonEmptyIds.every(id=>byId[id]);
+  const idHits = nonEmptyIds.filter(id=>byId[id]).length;
+  const useManifestIds = nonEmptyIds.length>0 && idHits*2>nonEmptyIds.length;
   const data=[];
   for(let i=0;i<imgs.length;i++){
     let paras=[], isTitle=false, cam=null, sid="";
