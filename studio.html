@@ -730,21 +730,32 @@ const DECK_BRIDGE_JS=
   '}'+
 '},200);'+
 'setTimeout(function(){clearInterval(poll);},30000);'+
+// Сообщения принимаем только от родителя (студии): вложенный контент деки не
+// должен уметь дёргать goTo от своего имени, выдавая себя за студию.
 'addEventListener("message",function(ev){'+
+  'if(ev.source!==parent) return;'+
   'var d=ev.data; if(!d||!d.__deckBridge||!deck) return;'+
   'if(d.type==="goTo"){ deck.goTo(d.i); requestAnimationFrame(function(){ requestAnimationFrame(function(){ post({__deckBridge:true,type:"goToDone",i:d.i}); }); }); }'+
 '});'+
 '})();';
-// Закрывающий тег собран из кусков, а не выписан целиком: HTML-парсер ищет
-// такую последовательность байт где угодно внутри <script>, не глядя, что это
-// JS-строка, и оборвал бы им наш СОБСТВЕННЫЙ <script> прямо в исходнике.
+// Мост дописывается в САМЫЙ КОНЕЦ текста документа, а не подменой первого
+// </body>: подмена ломалась, если такая же последовательность байт случайно
+// встречалась внутри чужого инлайн-скрипта деки (внутри JS-строки, шаблона и
+// т.п.) — тег обрывался посреди чужого кода. Дописывание в конец безопаснее:
+// HTML-парсер всё равно уносит любой контент после закрытия документа обратно
+// в <body> по правилам восстановления после ошибок, специально искать место
+// не нужно. Кодировка Blob — utf-8 явно: страница-дека не обязана объявлять
+// charset в своих байтах, а искажённая кириллица в метках слайдов испортит id.
 function injectDeckBridge(html){
-  const tag="<script>"+DECK_BRIDGE_JS+"</"+"script>";
-  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, tag+"</body>") : html+tag;
+  return html+"<script>"+DECK_BRIDGE_JS+"</"+"script>";
 }
 
 async function htmlDeckToFrames(src, say){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia) throw new Error("Этот браузер не умеет снимать вкладку — нужен Chrome или Edge.");
+  // Без requestVideoFrameCallback нечем достоверно проверить, что кадр вообще
+  // пришёл — не притворяемся, что тишина в 120мс это готовый кадр (так было
+  // раньше), а сразу говорим прямо: браузер не поддерживается.
+  if(!(window.HTMLVideoElement && HTMLVideoElement.prototype.requestVideoFrameCallback)) throw new Error("Этот браузер не поддерживается — нужен свежий Chrome или Edge.");
   // Разрешение — первым делом: Chrome даёт его только сразу после нажатия кнопки.
   say("Разреши студии снять эту вкладку: в окне Chrome выбери «Эта вкладка» → «Поделиться».");
   let stream;
@@ -775,7 +786,7 @@ async function htmlDeckToFrames(src, say){
   vid.style.cssText="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
   stage.appendChild(fr); wrap.appendChild(note); wrap.appendChild(stage); document.body.appendChild(wrap); document.body.appendChild(vid);
 
-  let url=null, tmp=null, framesDir=null; const urls=[];
+  let url=null, framesDir=null; const urls=[];
   const cleanup=()=>{
     try{track.stop();}catch(e){}
     removeEventListener("resize", fit);
@@ -785,23 +796,37 @@ async function htmlDeckToFrames(src, say){
   try{
     note.textContent="Открываю деку…";
     const rawHtml=await (await src.file.getFile()).text();
-    url=URL.createObjectURL(new Blob([injectDeckBridge(rawHtml)],{type:"text/html"}));
-    fr.src=url;
-    const loaded=await Promise.race([ new Promise(r=>{ fr.onload=()=>r(true); }), new Promise(r=>setTimeout(()=>r(false),15000)) ]);
-    if(!loaded) throw new Error("«"+src.name+"» не загрузилась в браузере. Попробуй ещё раз.");
+    url=URL.createObjectURL(new Blob([injectDeckBridge(rawHtml)],{type:"text/html;charset=utf-8"}));
 
-    // Готовность деки — тоже по почте: contentDocument у песочницы без
-    // allow-same-origin недоступен из студии в принципе.
+    // Слушателя вешаем ДО fr.src: "ready" может прийти очень быстро после
+    // начала загрузки, и подписка после назначения src рисковала его
+    // пропустить. contentWindow у iframe стабилен уже сейчас, до навигации.
     let readyMsg=null;
     const onReady=(ev)=>{ const d=ev.data; if(d&&d.__deckBridge&&d.type==="ready"&&ev.source===fr.contentWindow) readyMsg=d; };
     addEventListener("message", onReady);
+
+    fr.src=url;
+    const loaded=await Promise.race([ new Promise(r=>{ fr.onload=()=>r(true); }), new Promise(r=>setTimeout(()=>r(false),15000)) ]);
+    if(!loaded){ removeEventListener("message", onReady); throw new Error("«"+src.name+"» не загрузилась в браузере. Попробуй ещё раз."); }
+
+    // Готовность деки — тоже по почте: contentDocument у песочницы без
+    // allow-same-origin недоступен из студии в принципе.
     try{
       const t0=Date.now();
       while(!readyMsg && Date.now()-t0<30000) await new Promise(r=>setTimeout(r,100));
     } finally { removeEventListener("message", onReady); }
     if(!readyMsg) throw new Error("«"+src.name+"» — это не дека Claude Design (или она не успела загрузиться). Проверь, что это выгрузка деки одним HTML-файлом, и попробуй ещё раз.");
 
-    const n=readyMsg.length|0, labels=readyMsg.labels||[];
+    // Мост живёт в недоверенной песочнице — его данные не принимаем на слово:
+    // длина и метки должны быть похожи на правду (целое число слайдов,
+    // столько же строк-меток разумной длины), иначе это не дека вовсе или
+    // сообщение подделано.
+    const rawLen=readyMsg.length, rawLabels=readyMsg.labels;
+    const lenOk=Number.isInteger(rawLen) && rawLen>=1 && rawLen<=500;
+    const labelsOk=Array.isArray(rawLabels) && rawLabels.length===rawLen && rawLabels.every(l=>typeof l==="string" && l.length<=200);
+    if(!lenOk || !labelsOk) throw new Error("«"+src.name+"» — это не дека Claude Design (данные от неё не прошли проверку). Проверь, что это выгрузка деки одним HTML-файлом, и попробуй ещё раз.");
+    const n=rawLen, labels=rawLabels;
+    console.log("[html-дека] метки слайдов от моста:", labels);
     if(!n) throw new Error("В «"+src.name+"» деку нашёл, но слайдов в ней 0.");
 
     // Region Capture — обязателен, без координатного фолбэка: успешный cropTo
@@ -819,19 +844,22 @@ async function htmlDeckToFrames(src, say){
     if(!played) throw new Error("Chrome не запускает видео снятой вкладки. Попробуй ещё раз.");
 
     // Кадр может не прийти вовсе — с ограничением по времени, а не бесконечно.
+    // Фолбэка «нет rVFC — считаем успехом через 120мс» больше нет: без rVFC
+    // выше уже отказали честной ошибкой про неподдерживаемый браузер.
     const nextFrame=(ms)=>new Promise(r=>{
       let done=false; const t=setTimeout(()=>{ if(!done){done=true; r(false);} }, ms||4000);
-      if(vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(()=>{ if(!done){done=true; clearTimeout(t); r(true);} });
-      else setTimeout(()=>{ if(!done){done=true; clearTimeout(t); r(true);} },120);
+      vid.requestVideoFrameCallback(()=>{ if(!done){done=true; clearTimeout(t); r(true);} });
     });
     if(!(await nextFrame(8000))) throw new Error("Chrome не отдаёт кадры снятой вкладки — похоже, ты поделился не той вкладкой. Нажми «Начать» и выбери именно «Эта вкладка».");
 
     // goTo — тоже почтой: ставим слайд и ждём два requestAnimationFrame внутри
     // песочницы (мост подтверждает после них), чтобы не снять кадр раньше кадра.
-    const goTo=(i)=>new Promise((res)=>{
+    // Ack не пришёл вовремя — не продолжаем тихо (было так раньше), а прерываем
+    // импорт ошибкой: раз мост замолчал, доверять следующему кадру нельзя.
+    const goTo=(i)=>new Promise((res,rej)=>{
       let done=false;
       const h=(ev)=>{ const d=ev.data; if(d&&d.__deckBridge&&d.type==="goToDone"&&d.i===i&&ev.source===fr.contentWindow&&!done){ done=true; removeEventListener("message",h); clearTimeout(t); res(); } };
-      const t=setTimeout(()=>{ if(!done){ done=true; removeEventListener("message",h); res(); } },4000); // ack потерялся — не блокируем импорт навечно, кадр всё равно проверит nextFrame
+      const t=setTimeout(()=>{ if(!done){ done=true; removeEventListener("message",h); rej(new Error("Дека не подтвердила переключение на слайд "+(i+1)+" из "+n+". Попробуй ещё раз.")); } },4000);
       addEventListener("message", h);
       fr.contentWindow.postMessage({__deckBridge:true,type:"goTo",i},"*");
     });
@@ -842,27 +870,36 @@ async function htmlDeckToFrames(src, say){
     try{ framesDir=await src.dir.getDirectoryHandle("deck_frames",{create:true}); }
     catch(e){ throw new Error("Не могу создать deck_frames/ рядом с «"+src.name+"»: "+e.message); }
 
+    // Имя деки сравниваем и храним без пути подпапки: та же дека, увиденная с
+    // другого уровня (курс целиком vs сама папка урока), не должна выглядеть
+    // как «другая» и звать лишний confirm().
+    const srcBase=srcBasename(src.name);
+
     // В папке уже есть кадры — может, чужой деки. Молча затирать чужую работу
     // нельзя: спрашиваем, только если это точно не прошлый рендер этого же html
-    // (совпадение по имени в manifest.json).
+    // (совпадение по базовому имени в manifest.json).
     let existingManifest=null, existingCount=0;
     for await (const [name,h] of framesDir.entries()){
       if(h.kind==="file" && /^p-\d+\.png$/i.test(name)) existingCount++;
       if(h.kind==="file" && name==="manifest.json"){ try{ existingManifest=JSON.parse(await (await h.getFile()).text()); }catch(e){} }
     }
-    if(existingCount && (!existingManifest || existingManifest.source!==src.name)){
+    if(existingCount && (!existingManifest || srcBasename(existingManifest.source)!==srcBase)){
       const ok=confirm("В папке уже есть кадры другой деки ("+existingCount+" шт.). Заменить их кадрами из «"+src.name+"»?");
       if(!ok) throw new Error("Импорт отменён — прежние кадры не тронуты.");
     }
 
-    // Атомарность: пишем в подпапку .import-tmp и коммитим в deck_frames/
-    // единым шагом только после успешной съёмки ВСЕХ слайдов — упавший на
-    // середине импорт не должен оставить папку наполовину перезаписанной.
-    try{ tmp=await framesDir.getDirectoryHandle(".import-tmp",{create:true}); }
-    catch(e){ throw new Error("Не могу создать временную папку для импорта: "+e.message); }
-    for await (const [name] of tmp.entries()) { try{ await tmp.removeEntry(name,{recursive:true}); }catch(e){} }
-
-    const manifest={source:src.name, slides:[]}; let lowRes=0;
+    // Атомарность без промежуточной папки: новые кадры пишем сразу в
+    // deck_frames/ под именами нового поколения (числовой префикс — метка
+    // времени, чтобы не пересечься ни со старыми файлами, ни с сиротами
+    // прошлых сбоев — имя всё равно ничего не значит, порядок и принадлежность
+    // задаёт только manifest.json), а manifest.json пишем ПОСЛЕДНИМ. Именно его
+    // успешная запись и есть переключение на новый набор: упавший до этой
+    // строки импорт не трогает старую деку ни на байт — старый manifest.json
+    // всё ещё указывает на старые файлы, а новые (частично снятые) остаются
+    // лежать сиротами на диске и будут выметены при следующем успешном
+    // импорте — .import-tmp и перенос файлов больше не нужны.
+    const gen=Date.now();
+    const manifest={source:srcBase, slides:[]}; let lowRes=0;
     for(let i=0;i<n;i++){
       note.textContent="Снимаю слайд "+(i+1)+" из "+n+"… не трогай окно"; say("Импорт HTML-деки: слайд "+(i+1)+" из "+n+"…");
       await goTo(i);
@@ -872,38 +909,30 @@ async function htmlDeckToFrames(src, say){
       octx.drawImage(vid,0,0,vw,vh,0,0,1920,1080);
       if(vw<1920||vh<1080) lowRes=1;
       const blob=await new Promise(r=>out.toBlob(r,"image/png"));
-      const file="p-"+String(i+1).padStart(2,"0")+".png";
-      const w=await (await tmp.getFileHandle(file,{create:true})).createWritable(); await w.write(blob); await w.close();
+      const file="p-"+gen+String(i+1).padStart(2,"0")+".png";
+      const w=await (await framesDir.getFileHandle(file,{create:true})).createWritable(); await w.write(blob); await w.close();
       manifest.slides.push({file,id:deckLabelId(labels[i]||"")}); urls.push(URL.createObjectURL(blob));
     }
-    { const mw=await (await tmp.getFileHandle("manifest.json",{create:true})).createWritable(); await mw.write(JSON.stringify(manifest,null,2)); await mw.close(); }
+    { const mw=await (await framesDir.getFileHandle("manifest.json",{create:true})).createWritable(); await mw.write(JSON.stringify(manifest,null,2)); await mw.close(); }
 
-    // Коммит: старые p-*.png и manifest.json убираем, новые переносим из tmp.
-    // Всё остальное в deck_frames/ не трогаем.
+    // Успех подтверждён записью manifest.json — теперь можно выметать всё,
+    // чего в новом манифесте нет: и старое поколение, и сирот от прошлых сбоев.
+    const keep=new Set(manifest.slides.map(m=>m.file.toLowerCase()));
     for await (const [name,h] of framesDir.entries()){
-      if(h.kind==="file" && (/^p-\d+\.png$/i.test(name) || name==="manifest.json")){ try{ await framesDir.removeEntry(name); }catch(e){} }
+      if(h.kind==="file" && /^p-\d+\.png$/i.test(name) && !keep.has(name.toLowerCase())){ try{ await framesDir.removeEntry(name); }catch(e){} }
     }
-    for await (const [name,h] of tmp.entries()){
-      if(h.kind!=="file") continue;
-      try{
-        if(typeof h.move!=="function") throw new Error("no-move");
-        await h.move(framesDir, name);
-      }catch(e){
-        const file=await h.getFile();
-        const w=await (await framesDir.getFileHandle(name,{create:true})).createWritable(); await w.write(file); await w.close();
-        try{ await tmp.removeEntry(name); }catch(e2){}
-      }
-    }
-    try{ await framesDir.removeEntry(".import-tmp",{recursive:true}); }catch(e){}
-    tmp=null;
 
-    if(lowRes) setTimeout(()=>alert("Кадры сняты меньше 1920 точек по ширине или по высоте — окно Chrome было не на весь экран. Разверни его на весь экран и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
+    // «Разверни окно» подсказываем, только если окно и правда не развёрнуто:
+    // на экране меньше 1920 точек разворачивать уже некуда, совет вводил бы в
+    // заблуждение — в этом случае честно предупредили ещё до «Начать».
+    if(lowRes && !isWindowMaximized()) setTimeout(()=>alert("Кадры сняты меньше 1920×1080 — окно Chrome было не на весь экран. Разверни его на весь экран и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
     return {urls, manifest};
   } catch(e){
     // Частично снятые кадры при неудаче не нужны — их blob-URL иначе держат
-    // память до закрытия вкладки без всякой пользы.
+    // память до закрытия вкладки без всякой пользы. Осиротевшие p-*.png на
+    // диске (если успели записаться) не трогаем — их подчистит следующий
+    // успешный импорт, а сейчас старый набор должен остаться нетронутым.
     for(const u of urls){ try{URL.revokeObjectURL(u);}catch(e2){} }
-    if(framesDir){ try{ await framesDir.removeEntry(".import-tmp",{recursive:true}); }catch(e2){} }
     throw e;
   } finally { cleanup(); }
 }
