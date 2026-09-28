@@ -315,6 +315,7 @@ input[type=range]{width:90px;}
      <span id="recTime" class="lab">0:00</span>
      <span id="savemsg"></span>
      <button id="remuxRetryBtn" style="display:none"></button>
+     <button id="showFolderBtn" style="display:none" title="открыть папку урока с этим дублем">📂 показать в папке</button>
      <span class="vdiv"></span>
      <button id="cutbtn" title="поставить отметку (таймкод) в записи">⚑ отметка</button>
      <span class="vdiv"></span>
@@ -2059,8 +2060,28 @@ function recWriteFailed(S){
   setSaveMsg("диск не принимает запись — пишу в память, файл скачается по «Стоп»",true);
 }
 
+/* «Показать в папке». Открыть Finder/Проводник веб-страница не может, и пути к
+   папке на диске она не знает. Поэтому — системное окно выбора файла, сразу
+   стоящее в папке урока (startIn: handle самого дубля): дубль виден, его можно
+   перетащить оттуда в монтажку. Выбор в окне ни на что не влияет — «Отмена» и
+   «Открыть» одинаково просто закрывают его. */
+let folderTake=null;
+function showFolderFor(S){
+  if(!window.showOpenFilePicker) return;
+  folderTake={dir:S.dir, name:S.actualVideoName};
+  const b=$("#showFolderBtn"); if(b) b.style.display="";
+}
+function hideFolderBtn(){ folderTake=null; const b=$("#showFolderBtn"); if(b) b.style.display="none"; }
+async function openTakeFolder(){
+  if(!folderTake) return;
+  let startIn=folderTake.dir;
+  try{ startIn=await folderTake.dir.getFileHandle(folderTake.name); }catch(e){}
+  try{ await window.showOpenFilePicker({startIn, multiple:false}); }
+  catch(e){ /* «Отмена» — это AbortError, это нормально */ }
+}
 async function startRec(){
   if(recording||starting||saving||remuxing)return; starting=true;
+  hideFolderBtn();
   updateRemuxRetryUI();   // прячет кнопку повтора сразу, не дожидаясь updateRecUI ниже
   try{
     const aTrack=await ensureAudio();
@@ -2240,6 +2261,7 @@ async function finishRec(S){
     S.chunks=[];
     await writeMarkers(S);
     if(!S.discard) await writeSyncLog(S);
+    if(S.dir && !S.failed) showFolderFor(S);
     if(S.remuxFailed && S.dir){
       setSaveMsg("⚠ не готов для монтажа — жми 🔁",true,
         "Сохранено: "+S.actualVideoName+" — играется, но для монтажа (DaVinci и т.п.) не готов. "
@@ -2441,6 +2463,7 @@ function bindStudio(){
   $("#recbtn").onclick=startRec;$("#pausebtn").onclick=togglePause;$("#stopbtn").onclick=stopRec;
   $("#cutbtn").onclick=markCut;$("#m_cut").onclick=markCut;
   $("#remuxRetryBtn").onclick=retryRemuxAll;
+  $("#showFolderBtn").onclick=openTakeFolder;
   $("#resbtn").onclick=()=>{const i=RES_SEQ.indexOf(st.res);st.res=RES_SEQ[(i+1)%RES_SEQ.length];save("res",st.res);syncResBtn();};
   $("#burnbtn").onclick=()=>{st.burnIn=!st.burnIn;save("burnIn",st.burnIn);$("#burnbtn").classList.toggle("active",st.burnIn);};
   $("#posbtn").onclick=()=>{st.promptPos=st.promptPos==="top"?"bottom":"top";save("promptPos",st.promptPos);applyPromptBox();};
