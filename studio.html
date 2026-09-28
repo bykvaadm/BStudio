@@ -2074,6 +2074,7 @@ async function showFolderFor(S){
   // Handle готовим заранее: окно выбора Chrome открывает только сразу после
   // клика, долгий await внутри обработчика мог бы это «разрешение» съесть.
   let startIn=S.dir; try{ startIn=await S.dir.getFileHandle(S.actualVideoName); }catch(e){}
+  if(S.dir!==(CURLESSON&&CURLESSON.dirHandle)) return;   // урок сменился, пока ждали
   folderTake={startIn};
   const b=$("#showFolderBtn"); if(b) b.style.display="";
 }
