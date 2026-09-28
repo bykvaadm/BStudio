@@ -407,8 +407,16 @@ async function findDeckSources(dirHandle){
       if(h.kind!=="file") continue;
       if(/\.pdf$/i.test(name))  out.push({kind:"pdf",  file:h, name:(label?label+"/":"")+name, sub:label||null});
       if(/\.pptx$/i.test(name)) out.push({kind:"pptx", file:h, name:(label?label+"/":"")+name, sub:label||null});
-      if(/\.html?$/i.test(name) && !/^(studio|editor|index)\.html$/i.test(name))
-        out.push({kind:"html", file:h, dir, name:(label?label+"/":"")+name, sub:label||null});
+      if(/\.html?$/i.test(name) && !/^(studio|editor|index)\.html$/i.test(name)){
+        // Мало ли какой html лежит рядом (шаблон, временный экспорт) — деку
+        // Claude Design узнаём по тексту "deck-stage" внутри файла. Дешёвая
+        // проверка при сканировании, поэтому только для файлов не крупнее ~20 МБ.
+        try{
+          const file=await h.getFile();
+          if(file.size<=20*1024*1024 && /deck-stage/i.test(await file.text()))
+            out.push({kind:"html", file:h, dir, name:(label?label+"/":"")+name, sub:label||null});
+        }catch(e){}
+      }
     }
   };
   // Просто папка с картинками — тоже дека. Имена не обязаны быть p-NNN.png,
@@ -437,14 +445,31 @@ async function findDeckSources(dirHandle){
     }
   }
 
+  // deck_frames рядом с HTML-декой мог остаться от прошлого импорта, а дека с
+  // тех пор поправлена — метим кадры как устаревшие, чтобы список источников
+  // прямо подсказывал «нужно переснять», а не показывал молча старую версию.
+  for(const p of out){
+    if(p.kind!=="png") continue;
+    const pSub = p.sub==="deck_frames" ? null : p.sub;     // framesIn даёт "deck_frames" в корне вместо null
+    const htmlSrc = out.find(h=> h.kind==="html" && h.sub===pSub);
+    if(!htmlSrc) continue;
+    try{
+      const [hFile, mh] = await Promise.all([htmlSrc.file.getFile(), p.handle.getFileHandle("manifest.json").catch(()=>null)]);
+      const mFile = mh ? await mh.getFile() : null;
+      if(mFile && hFile.lastModified>mFile.lastModified) p.staleHtml=true;
+    }catch(e){}
+  }
+
   // Порядок = порядок предпочтения, потому что первый пункт станет значением по
   // умолчанию. Кадры грузятся мгновенно и не требуют сети, поэтому они впереди —
   // но только полноценные. Папка на пару кадров это почти всегда обложка для
   // сайта, а не дека, и ставить её дефолтом означало бы, что запись начнётся с
   // одного слайда. Такие уезжают в конец списка, но из него не исчезают.
+  // HTML-дека — после PDF: PDF остаётся источником по умолчанию, если есть оба.
   const COVER = 5;                       // меньше этого — считаем обложкой
   const rank = x => x.kind==="png"  ? (x.count>=COVER ? 0 : 3)
-                  : x.kind==="pdf"||x.kind==="html" ? 1
+                  : x.kind==="pdf"  ? 1
+                  : x.kind==="html" ? 1.5
                   : x.kind==="imgs" ? (x.count>=COVER ? 2 : 4)
                   : 5;                        // pptx последний: его не нарисовать
   out.sort((a,b)=> rank(a)-rank(b)
@@ -455,7 +480,7 @@ async function findDeckSources(dirHandle){
 
 // Человекочитаемая подпись источника для выпадающего списка.
 function sourceLabel(src){
-  if(src.kind==="png")  return `${src.name} — кадры, ${src.count} шт.`;
+  if(src.kind==="png")  return `${src.name} — кадры, ${src.count} шт.`+(src.staleHtml?" (HTML-дека новее — выбери её, чтобы обновить)":"");
   if(src.kind==="pdf")  return `${src.name} — PDF`;
   if(src.kind==="html") return `${src.name} — HTML-дека, импорт в кадры`;
   if(src.kind==="imgs") return `${src.name} — картинки, ${src.count} шт.`;
@@ -649,12 +674,62 @@ function pdfWarningText(){
 
    Сфотографировать кусок страницы браузер сам не умеет, поэтому снимаем свою же
    вкладку (getDisplayMedia): Chrome один раз спросит «Поделиться этой вкладкой».
-   Кадр обрезается по iframe с декой (Region Capture), iframe занимает окно
-   целиком — на Retina это ровно 1920×1080 и больше; если окно маленькое,
-   предупреждаем, а не молча отдаём мыло. Если обрезанный поток так и не выдал
-   ни одного кадра (бывает на некоторых сборках Chrome) — снимаем обрезку и
-   считаем координаты сами, а не виснем навсегда. */
+   Кадр обрезается по iframe с декой (Region Capture — обязателен, без фолбэка:
+   он же попутно проверяет, что человек поделился именно этой вкладкой, а не
+   какой-то другой).
+
+   Дека грузится в iframe с sandbox="allow-scripts" БЕЗ allow-same-origin —
+   у неё opaque-origin, студия не может дотянуться до её window, а она — до
+   window.parent, IndexedDB студии и handle папки курса. Вся связь — почтой
+   (postMessage): в текст HTML перед загрузкой вшивается маленький скрипт-мост,
+   который сообщает о готовности деки и слайдов и выполняет goTo по команде. */
 function deckLabelId(l){ const m=(l||"").match(/([0-9]+\.[0-9]+)/); return m?m[1]:(l||"").trim().toLowerCase(); }
+
+// Скрипт-мост живёт внутри песочницы и не разделяет область видимости со
+// студией — весь обмен только через postMessage. Ищет деку поллингом (а не
+// MutationObserver): бандлер распаковывает себя через
+// document.documentElement.replaceWith(...), и обсервер, подвешенный на старый
+// documentElement, слежку потеряет; document — тот же объект, поэтому обычный
+// querySelector с интервалом переживает замену спокойно.
+const DECK_BRIDGE_JS=
+'(function(){'+
+'function post(m){try{parent.postMessage(m,"*");}catch(e){}}'+
+'function hideUi(deck){'+
+  'try{deck.setAttribute("no-rail","");}catch(e){}'+
+  'var css=document.createElement("style");'+
+  'css.textContent="*{animation:none!important;transition:none!important;scroll-behavior:auto!important} #tweaks-root,.tweaks-root,.tweaks-panel{display:none!important} .slide-num{display:none!important} #__claude_design_branding{display:none!important}";'+
+  'document.head.appendChild(css); document.body.classList.add("hide-video");'+
+  'try{var sr=deck.shadowRoot; if(sr){var ss=document.createElement("style"); ss.textContent=".export-hidden,.overlay,.rail,.ctxmenu,.rail-resize,.confirm-backdrop{display:none!important}"; sr.appendChild(ss);} }catch(e){}'+
+'}'+
+'function labelsOf(){'+
+  'return [].slice.call(document.querySelectorAll("deck-stage > section")).map(function(sec){'+
+    'var n=sec.querySelector(".slide-num"); if(n) return n.textContent.trim();'+
+    'return sec.getAttribute("data-screen-label")||"";'+
+  '});'+
+'}'+
+'var deck=null, ready=false, poll=setInterval(function(){'+
+  'if(ready) return;'+
+  'var d=document.querySelector("deck-stage");'+
+  'if(d && typeof d.goTo==="function" && (d.length|0)>0){'+
+    'deck=d; ready=true; clearInterval(poll); hideUi(deck);'+
+    'var fin=function(){ post({__deckBridge:true,type:"ready",length:deck.length|0,labels:labelsOf()}); };'+
+    'if(document.fonts && document.fonts.ready && document.fonts.ready.then) document.fonts.ready.then(fin,fin); else fin();'+
+  '}'+
+'},200);'+
+'setTimeout(function(){clearInterval(poll);},30000);'+
+'addEventListener("message",function(ev){'+
+  'var d=ev.data; if(!d||!d.__deckBridge||!deck) return;'+
+  'if(d.type==="goTo"){ deck.goTo(d.i); requestAnimationFrame(function(){ requestAnimationFrame(function(){ post({__deckBridge:true,type:"goToDone",i:d.i}); }); }); }'+
+'});'+
+'})();';
+// Закрывающий тег собран из кусков, а не выписан целиком: HTML-парсер ищет
+// такую последовательность байт где угодно внутри <script>, не глядя, что это
+// JS-строка, и оборвал бы им наш СОБСТВЕННЫЙ <script> прямо в исходнике.
+function injectDeckBridge(html){
+  const tag="<script>"+DECK_BRIDGE_JS+"</"+"script>";
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, tag+"</body>") : html+tag;
+}
+
 async function htmlDeckToFrames(src, say){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia) throw new Error("Этот браузер не умеет снимать вкладку — нужен Chrome или Edge.");
   // Разрешение — первым делом: Chrome даёт его только сразу после нажатия кнопки.
@@ -662,6 +737,7 @@ async function htmlDeckToFrames(src, say){
   let stream;
   try{ stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"browser",frameRate:30},audio:false,preferCurrentTab:true,selfBrowserSurface:"include",surfaceSwitching:"exclude"}); }
   catch(e){ throw new Error("Без разрешения снять вкладку HTML-деку в кадры не перевести. Нажми «Начать» ещё раз и выбери «Эта вкладка»."); }
+
   const track=stream.getVideoTracks()[0];
   const wrap=document.createElement("div"), note=document.createElement("div"), stage=document.createElement("div"), fr=document.createElement("iframe"), vid=document.createElement("video");
   // Строка статуса — своя полоса СВЕРХУ, а не поверх деки: если текст лежит
@@ -672,81 +748,150 @@ async function htmlDeckToFrames(src, say){
   wrap.style.cssText="position:fixed;inset:0;z-index:100000;background:#000;display:flex;flex-direction:column";
   note.style.cssText="flex:0 0 32px;display:flex;align-items:center;padding:0 12px;box-sizing:border-box;color:#9aa0a8;font:13px -apple-system,Segoe UI,Roboto,sans-serif";
   stage.style.cssText="flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center";
+  // Ровно 16:9, без noscale: дека сама вписывается в контейнер (no-rail убирает
+  // резерв под ленту миниатюр — без него поля оставались, даже когда лента
+  // скрыта через display:none, потому что _fit() всё равно учитывал её ширину).
   const fit=()=>{ const W=innerWidth, H=innerHeight-32, w=Math.min(W,H*16/9); fr.style.width=Math.floor(w)+"px"; fr.style.height=Math.floor(w*9/16)+"px"; };
+  fr.setAttribute("sandbox","allow-scripts");
   fr.style.cssText="border:0;background:#fff;display:block"; fit();
+  addEventListener("resize", fit);
   // <video> держим в документе, но невидимым: без этого requestVideoFrameCallback
   // на некоторых сборках Chrome не срабатывает вовсе, потому что элемент вне
   // дерева рендера не получает кадров композитора. display:none тоже не годится
   // (та же причина) — прячем непрозрачностью и уводим за край экрана.
   vid.style.cssText="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
   stage.appendChild(fr); wrap.appendChild(note); wrap.appendChild(stage); document.body.appendChild(wrap); document.body.appendChild(vid);
-  const url=URL.createObjectURL(await src.file.getFile());
-  const cleanup=()=>{ try{track.stop();}catch(e){} wrap.remove(); vid.remove(); URL.revokeObjectURL(url); };
+
+  let url=null, tmp=null, framesDir=null; const urls=[];
+  const cleanup=()=>{
+    try{track.stop();}catch(e){}
+    removeEventListener("resize", fit);
+    wrap.remove(); vid.remove();
+    if(url) try{URL.revokeObjectURL(url);}catch(e){}
+  };
   try{
     note.textContent="Открываю деку…";
+    const rawHtml=await (await src.file.getFile()).text();
+    url=URL.createObjectURL(new Blob([injectDeckBridge(rawHtml)],{type:"text/html"}));
     fr.src=url;
-    await new Promise(r=>{ fr.onload=r; });
-    const win=fr.contentWindow, doc=()=>fr.contentDocument;
-    // Упакованная дека сначала распаковывает себя и только потом создаёт <deck-stage>.
-    let deck=null;
-    for(let t=0;t<120&&!deck;t++){ await new Promise(r=>setTimeout(r,250)); const d=doc()&&doc().querySelector("deck-stage"); if(d&&typeof d.goTo==="function"&&(d.length|0)>0) deck=d; }
-    if(!deck) throw new Error("В «"+src.name+"» не нашёл деку Claude Design (<deck-stage>). Это точно выгрузка деки одним HTML-файлом?");
-    // Без этого дека сама вписывает себя в контейнер с полями (letterbox), и в
-    // кадр вместо слайда целиком попадает слайд с чёрными полями по краям.
-    deck.setAttribute("noscale","");
-    try{ await doc().fonts.ready; }catch(e){}
-    // Прячем всё, что не слайд: номера, панели, служебные кнопки — как render.js.
-    const css=doc().createElement("style");
-    css.textContent="*{animation:none!important;transition:none!important;scroll-behavior:auto!important} #tweaks-root,.tweaks-root,.tweaks-panel{display:none!important} .slide-num{display:none!important} #__claude_design_branding{display:none!important}";
-    doc().head.appendChild(css); doc().body.classList.add("hide-video");
-    try{ const sr=deck.shadowRoot; if(sr){ const ss=doc().createElement("style"); ss.textContent=".export-hidden,.overlay,.rail,.ctxmenu,.rail-resize,.confirm-backdrop{display:none!important}"; sr.appendChild(ss); } }catch(e){}
-    const labels=[...doc().querySelectorAll("deck-stage > section")].map(sec=>{ const n=sec.querySelector(".slide-num"); return n?n.textContent.trim():""; });
-    const n=deck.length|0;
-    // Снимаем только iframe. Region Capture есть в Chrome; без него — обрезка по координатам.
-    let cropped=false;
-    try{ if(window.CropTarget&&track.cropTo){ await track.cropTo(await CropTarget.fromElement(fr)); cropped=true; } }catch(e){}
-    vid.muted=true; vid.srcObject=stream; await vid.play();
-    // Кадр может не прийти никогда — с ограничением по времени, а не бесконечно:
-    // на некоторых сборках Chrome обрезанный поток (Region Capture) молчит.
+    const loaded=await Promise.race([ new Promise(r=>{ fr.onload=()=>r(true); }), new Promise(r=>setTimeout(()=>r(false),15000)) ]);
+    if(!loaded) throw new Error("«"+src.name+"» не загрузилась в браузере. Попробуй ещё раз.");
+
+    // Готовность деки — тоже по почте: contentDocument у песочницы без
+    // allow-same-origin недоступен из студии в принципе.
+    let readyMsg=null;
+    const onReady=(ev)=>{ const d=ev.data; if(d&&d.__deckBridge&&d.type==="ready"&&ev.source===fr.contentWindow) readyMsg=d; };
+    addEventListener("message", onReady);
+    try{
+      const t0=Date.now();
+      while(!readyMsg && Date.now()-t0<30000) await new Promise(r=>setTimeout(r,100));
+    } finally { removeEventListener("message", onReady); }
+    if(!readyMsg) throw new Error("«"+src.name+"» — это не дека Claude Design (или она не успела загрузиться). Проверь, что это выгрузка деки одним HTML-файлом, и попробуй ещё раз.");
+
+    const n=readyMsg.length|0, labels=readyMsg.labels||[];
+    if(!n) throw new Error("В «"+src.name+"» деку нашёл, но слайдов в ней 0.");
+
+    // Region Capture — обязателен, без координатного фолбэка: успешный cropTo
+    // на СВОЙ iframe заодно проверяет, что человек поделился именно этой
+    // вкладкой (на чужую поверхность cropTo вернёт отказ).
+    if(!(window.CropTarget && track.cropTo)) throw new Error("Этот Chrome не умеет обрезать снятую вкладку (Region Capture) — нужен свежий Chrome или Edge.");
+    let cropTarget;
+    try{ cropTarget=await CropTarget.fromElement(fr); }
+    catch(e){ throw new Error("Не смог подготовить обрезку кадра. Попробуй ещё раз."); }
+    try{ await track.cropTo(cropTarget); }
+    catch(e){ throw new Error("Похоже, ты поделился не той вкладкой. Нажми «Начать» ещё раз и в окне Chrome выбери именно «Эта вкладка»."); }
+
+    vid.muted=true; vid.srcObject=stream;
+    const played=await Promise.race([ vid.play().then(()=>true,()=>false), new Promise(r=>setTimeout(()=>r(false),5000)) ]);
+    if(!played) throw new Error("Chrome не запускает видео снятой вкладки. Попробуй ещё раз.");
+
+    // Кадр может не прийти вовсе — с ограничением по времени, а не бесконечно.
     const nextFrame=(ms)=>new Promise(r=>{
       let done=false; const t=setTimeout(()=>{ if(!done){done=true; r(false);} }, ms||4000);
       if(vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(()=>{ if(!done){done=true; clearTimeout(t); r(true);} });
       else setTimeout(()=>{ if(!done){done=true; clearTimeout(t); r(true);} },120);
     });
-    // Проба первого кадра: если обрезанный поток так и не задышал — снимаем обрезку
-    // и переходим на съёмку всей вкладки с обрезкой по координатам (см. ниже).
-    if(!(await nextFrame(8000))){
-      if(cropped){ try{ await track.cropTo(undefined); }catch(e){} cropped=false; }
-      if(!(await nextFrame(6000))) throw new Error("Chrome не отдаёт кадры снятой вкладки. Попробуй ещё раз и не сворачивай окно во время съёмки.");
-    }
+    if(!(await nextFrame(8000))) throw new Error("Chrome не отдаёт кадры снятой вкладки — похоже, ты поделился не той вкладкой. Нажми «Начать» и выбери именно «Эта вкладка».");
+
+    // goTo — тоже почтой: ставим слайд и ждём два requestAnimationFrame внутри
+    // песочницы (мост подтверждает после них), чтобы не снять кадр раньше кадра.
+    const goTo=(i)=>new Promise((res)=>{
+      let done=false;
+      const h=(ev)=>{ const d=ev.data; if(d&&d.__deckBridge&&d.type==="goToDone"&&d.i===i&&ev.source===fr.contentWindow&&!done){ done=true; removeEventListener("message",h); clearTimeout(t); res(); } };
+      const t=setTimeout(()=>{ if(!done){ done=true; removeEventListener("message",h); res(); } },4000); // ack потерялся — не блокируем импорт навечно, кадр всё равно проверит nextFrame
+      addEventListener("message", h);
+      fr.contentWindow.postMessage({__deckBridge:true,type:"goTo",i},"*");
+    });
+
     const out=document.createElement("canvas"); out.width=1920; out.height=1080;
     const octx=out.getContext("2d",{alpha:false});
-    let dir; try{ dir=await src.dir.getDirectoryHandle("deck_frames",{create:true}); }catch(e){ throw new Error("Не могу создать deck_frames/ рядом с «"+src.name+"»: "+e.message); }
-    const manifest={slides:[]}, urls=[]; let lowRes=0;
+
+    try{ framesDir=await src.dir.getDirectoryHandle("deck_frames",{create:true}); }
+    catch(e){ throw new Error("Не могу создать deck_frames/ рядом с «"+src.name+"»: "+e.message); }
+
+    // В папке уже есть кадры — может, чужой деки. Молча затирать чужую работу
+    // нельзя: спрашиваем, только если это точно не прошлый рендер этого же html
+    // (совпадение по имени в manifest.json).
+    let existingManifest=null, existingCount=0;
+    for await (const [name,h] of framesDir.entries()){
+      if(h.kind==="file" && /^p-\d+\.png$/i.test(name)) existingCount++;
+      if(h.kind==="file" && name==="manifest.json"){ try{ existingManifest=JSON.parse(await (await h.getFile()).text()); }catch(e){} }
+    }
+    if(existingCount && (!existingManifest || existingManifest.source!==src.name)){
+      const ok=confirm("В папке уже есть кадры другой деки ("+existingCount+" шт.). Заменить их кадрами из «"+src.name+"»?");
+      if(!ok) throw new Error("Импорт отменён — прежние кадры не тронуты.");
+    }
+
+    // Атомарность: пишем в подпапку .import-tmp и коммитим в deck_frames/
+    // единым шагом только после успешной съёмки ВСЕХ слайдов — упавший на
+    // середине импорт не должен оставить папку наполовину перезаписанной.
+    try{ tmp=await framesDir.getDirectoryHandle(".import-tmp",{create:true}); }
+    catch(e){ throw new Error("Не могу создать временную папку для импорта: "+e.message); }
+    for await (const [name] of tmp.entries()) { try{ await tmp.removeEntry(name,{recursive:true}); }catch(e){} }
+
+    const manifest={source:src.name, slides:[]}; let lowRes=0;
     for(let i=0;i<n;i++){
       note.textContent="Снимаю слайд "+(i+1)+" из "+n+"… не трогай окно"; say("Импорт HTML-деки: слайд "+(i+1)+" из "+n+"…");
-      deck.goTo(i);
-      await new Promise(r=>setTimeout(r,650)); await nextFrame(4000); await nextFrame(4000);
+      await goTo(i);
+      await new Promise(r=>setTimeout(r,300));
+      if(!(await nextFrame(4000))) throw new Error("Chrome перестал отдавать кадры снятой вкладки на слайде "+(i+1)+" из "+n+". Попробуй ещё раз.");
       const vw=vid.videoWidth, vh=vid.videoHeight;
-      if(cropped){ octx.drawImage(vid,0,0,vw,vh,0,0,1920,1080); if(vw<1900) lowRes=Math.max(lowRes,1); }
-      else{
-        // Кадр вкладки = её видимая область; переводим CSS-координаты iframe в пиксели кадра.
-        const r=fr.getBoundingClientRect(), k=vw/innerWidth;
-        octx.drawImage(vid,r.left*k,r.top*k,r.width*k,r.height*k,0,0,1920,1080); if(r.width*k<1900) lowRes=1;
-      }
+      octx.drawImage(vid,0,0,vw,vh,0,0,1920,1080);
+      if(vw<1920||vh<1080) lowRes=1;
       const blob=await new Promise(r=>out.toBlob(r,"image/png"));
       const file="p-"+String(i+1).padStart(2,"0")+".png";
-      const w=await (await dir.getFileHandle(file,{create:true})).createWritable(); await w.write(blob); await w.close();
+      const w=await (await tmp.getFileHandle(file,{create:true})).createWritable(); await w.write(blob); await w.close();
       manifest.slides.push({file,id:deckLabelId(labels[i]||"")}); urls.push(URL.createObjectURL(blob));
     }
-    const mw=await (await dir.getFileHandle("manifest.json",{create:true})).createWritable();
-    await mw.write(JSON.stringify(manifest,null,2)); await mw.close();
-    // Дека могла укоротиться: лишние кадры прошлого импорта иначе уехали бы в показ
-    // при следующем открытии deck_frames без manifest. Чистим после успешного импорта.
-    const keep=new Set(manifest.slides.map(m=>m.file.toLowerCase()));
-    for await (const [name] of dir.entries()) if(/^p-\d+\.png$/i.test(name)&&!keep.has(name.toLowerCase())){ try{ await dir.removeEntry(name); }catch(e){} }
-    if(lowRes) setTimeout(()=>alert("Кадры сняты с разрешением меньше 1920 по ширине — окно Chrome было маленьким. Для чётких слайдов разверни окно на весь экран и выбери HTML-деку ещё раз."),0);
+    { const mw=await (await tmp.getFileHandle("manifest.json",{create:true})).createWritable(); await mw.write(JSON.stringify(manifest,null,2)); await mw.close(); }
+
+    // Коммит: старые p-*.png и manifest.json убираем, новые переносим из tmp.
+    // Всё остальное в deck_frames/ не трогаем.
+    for await (const [name,h] of framesDir.entries()){
+      if(h.kind==="file" && (/^p-\d+\.png$/i.test(name) || name==="manifest.json")){ try{ await framesDir.removeEntry(name); }catch(e){} }
+    }
+    for await (const [name,h] of tmp.entries()){
+      if(h.kind!=="file") continue;
+      try{
+        if(typeof h.move!=="function") throw new Error("no-move");
+        await h.move(framesDir, name);
+      }catch(e){
+        const file=await h.getFile();
+        const w=await (await framesDir.getFileHandle(name,{create:true})).createWritable(); await w.write(file); await w.close();
+        try{ await tmp.removeEntry(name); }catch(e2){}
+      }
+    }
+    try{ await framesDir.removeEntry(".import-tmp",{recursive:true}); }catch(e){}
+    tmp=null;
+
+    if(lowRes) setTimeout(()=>alert("Кадры сняты мельче 1920×1080 — окно Chrome было не на весь экран. Разверни его на весь экран и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
     return {urls, manifest};
+  } catch(e){
+    // Частично снятые кадры при неудаче не нужны — их blob-URL иначе держат
+    // память до закрытия вкладки без всякой пользы.
+    for(const u of urls){ try{URL.revokeObjectURL(u);}catch(e2){} }
+    if(framesDir){ try{ await framesDir.removeEntry(".import-tmp",{recursive:true}); }catch(e2){} }
+    throw e;
   } finally { cleanup(); }
 }
 
@@ -759,7 +904,7 @@ function imgSize(url){return new Promise(res=>{const im=new Image();im.onload=()
 
 async function loadLesson(lesson, src){
   src = src || (lesson.sources||[]).find(x=>x.kind!=="pptx");
-  if(!src) throw new Error("В этой папке нечего показывать: нет ни deck_frames/, ни PDF, ни картинок.");
+  if(!src) throw new Error("В этой папке нечего показывать: нет ни deck_frames/, ни PDF, ни HTML-деки, ни картинок.");
   if(src.kind==="pptx") throw new Error(
     "Нашёл «"+src.name+"», но PPTX браузер не рисует. Сконвертируй в PDF одной командой:\n"+
     "soffice --headless --convert-to pdf \""+src.name+"\"\n"+
@@ -814,10 +959,16 @@ async function loadLesson(lesson, src){
   // Речитатива может не быть вовсе — тогда все слайды просто без текста.
   const slides=lesson.scriptHandle ? parseScript(await (await lesson.scriptHandle.getFile()).text()) : [];
   const byId={}; slides.forEach(s=>byId[s.id]=s);
+  // manifest с id есть, но НИ ОДИН id не нашёлся в речитативе — разметка деки
+  // не совпадает с речитативом (например: дека без .slide-num/data-screen-label
+  // в нужном формате). Тогда id молчат на каждом слайде, и суфлёр был бы пуст
+  // целиком; вместо этого раздаём текст по порядку, как для декок без manifest.
+  const manifestIdsMatch = !!(manifest && manifest.slides && manifest.slides.some(m=>m && m.id && byId[m.id]));
+  const useManifestIds = !!(manifest && manifest.slides) && manifestIdsMatch;
   const data=[];
   for(let i=0;i<imgs.length;i++){
     let paras=[], isTitle=false, cam=null, sid="";
-    if(manifest&&manifest.slides&&manifest.slides[i]){ const mid=manifest.slides[i].id; const s=byId[mid]; if(s){paras=s.paras;isTitle=!!s.title;cam=s.cam||null;} sid=mid||(s&&s.id)||""; }
+    if(useManifestIds && manifest.slides[i]){ const mid=manifest.slides[i].id; const s=byId[mid]; if(s){paras=s.paras;isTitle=!!s.title;cam=s.cam||null;} sid=mid||(s&&s.id)||""; }
     else if(slides[i]){ paras=slides[i].paras; isTitle=!!slides[i].title; cam=slides[i].cam||null; sid=slides[i].id||""; }
     const plain=paras.join("\n\n"); data.push({img:imgs[i], html:paraHtml(paras), plain, title:isTitle, cam, id:sid, words:plain.replace(/\[P\]/g," ").replace(/[*`]/g,"").trim().split(/\s+/).filter(Boolean).length});
   }
@@ -836,7 +987,7 @@ async function afterCourse(handle){
   try{
     LESSONS=await scanLessons(handle);
     const ready=LESSONS.filter(l=>l.ready);
-    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF или deck_frames/ с кадрами; речитатив 03-script.md рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":""); $("#setupMsg").className="msg err"; return; }
+    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF, HTML-дека Claude Design или deck_frames/ с кадрами; речитатив 03-script.md рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":""); $("#setupMsg").className="msg err"; return; }
     const sel=$("#lessonSel"); sel.innerHTML="";
     ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name+(l.scriptHandle?"":" — без речитатива"); sel.appendChild(o); });
     const last=LS("lastLesson",null); if(last!=null){ const idx=LESSONS.findIndex(l=>l.name===last&&l.ready); if(idx>=0) sel.value=String(idx); }
@@ -858,6 +1009,14 @@ function fillSources(){
   const remembered=LS("src:"+lesson.name,null);
   const idx=(lesson.sources||[]).findIndex(x=>x.name===remembered && x.kind!=="pptx");
   ss.value=String(idx>=0?idx:(lesson.sources||[]).findIndex(x=>x.kind!=="pptx"));
+  ss.onchange=updateSourceHint; updateSourceHint();
+}
+// HTML-деку студия снимает через захват вкладки сразу по клику «Начать» — окно
+// нужно развернуть ДО этого, разворачивать посреди съёмки уже поздно.
+function updateSourceHint(){
+  const lesson=LESSONS[+$("#lessonSel").value]; const src=(lesson.sources||[])[+$("#sourceSel").value];
+  const msg=$("#setupMsg");
+  if(src && src.kind==="html"){ msg.textContent="Перед «Начать» разверни окно браузера на весь экран — так кадры выйдут чёткими."; msg.className="msg"; }
 }
 
 async function startSelected(){
@@ -872,7 +1031,18 @@ async function startSelected(){
        иначе рисунок со слайда 1 прошлого урока всплывёт на слайде 1 нового и
        уедет в запись. */
     inkBySlide.clear(); inkUndoBySlide.clear();
-    save("lastLesson",lesson.name); save("src:"+lesson.name, src.name);
+    save("lastLesson",lesson.name);
+    if(src.kind==="html"){
+      // После импорта запоминаем выбор КАК КАДРЫ, а не как HTML: следующее
+      // «Начать» откроет уже готовые deck_frames/ без повторной съёмки. Путь
+      // собираем тем же правилом, что и framesIn — deck_frames рядом с деки.
+      save("src:"+lesson.name, (src.sub?src.sub+"/":"")+"deck_frames");
+      // lesson.sources ещё старый (deck_frames в нём мог не существовать до
+      // импорта) — обновляем в фоне, не задерживая начало студии.
+      findDeckSources(lesson.dirHandle).then(s=>{ lesson.sources=s; }).catch(()=>{});
+    }else{
+      save("src:"+lesson.name, src.name);
+    }
     const warn=(src.kind==="pdf")?pdfWarningText():"";
     if(warn){ alert("⚠ "+warn); }
     $("#setup").style.display="none"; $("#bar").style.display="flex";
