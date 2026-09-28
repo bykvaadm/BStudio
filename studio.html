@@ -884,7 +884,7 @@ async function htmlDeckToFrames(src, say){
     try{ await framesDir.removeEntry(".import-tmp",{recursive:true}); }catch(e){}
     tmp=null;
 
-    if(lowRes) setTimeout(()=>alert("Кадры сняты мельче 1920×1080 — окно Chrome было не на весь экран. Разверни его на весь экран и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
+    if(lowRes) setTimeout(()=>alert("Кадры сняты меньше 1920 точек по ширине или по высоте — окно Chrome было не на весь экран. Разверни его на весь экран и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
     return {urls, manifest};
   } catch(e){
     // Частично снятые кадры при неудаче не нужны — их blob-URL иначе держат
