@@ -766,7 +766,7 @@ async function startSelected(){
        (сбой, закрытая вкладка), лежат на диске как lecture-*.part.mp4 — не
        в памяти этой вкладки. Проверяем при каждом открытии урока, не только
        сразу после записи: страница вполне могла быть перезагружена. */
-    scanForLeftoverParts(CURLESSON.dirHandle);
+    refreshRemuxHint();
   }catch(e){ $("#setupMsg").textContent=e.message; $("#setupMsg").className="msg err"; }
 }
 function bindSetup(){
@@ -815,13 +815,9 @@ let camStream=null, camPending=null, micStream=null, micTrack=null, micPending=n
    retryRemuxAll (пакетная перепаковка того, что найдено на диске). Флаги
    разные и разными путями сбрасываются нарочно: раньше оба пользовались
    одним saving, и async-ремукс от кнопки «повторить» мог сброситься чужим
-   finally от совсем другой записи (и наоборот) — гонка. pendingScan —
-   {dir, names}: результат последнего скана папки на lecture-*.part.mp4,
-   вместе с самой папкой, которую сканировали, — а не молчаливое допущение
-   «это всегда папка текущего урока» (урок мог смениться, пока скан ещё шёл;
-   см. scanGen у scanForLeftoverParts). Заполняется сканом, а не памятью
-   одной JS-сессии, — переживает перезагрузку страницы. */
-let recSession=null, starting=false, saving=false, remuxing=false, pendingScan={dir:null,names:[]};
+   finally от совсем другой записи (и наоборот) — гонка. Что ждёт
+   перепаковки, не хранится вовсе — см. listLeftoverParts/refreshRemuxHint. */
+let recSession=null, starting=false, saving=false, remuxing=false;
 
 function showSlide(i){
   const n=Math.max(0,Math.min(SLIDES.length-1,i));
@@ -1542,7 +1538,7 @@ async function swapInFinal(dir,tmpHandle,finalName){
 }
 /* Общий шаг «<name>.part.mp4 → <name>.mp4» — им пользуется и автоматическая
    перепаковка сразу после «Стоп», и повтор по кнопке (в том числе для
-   дублей из прошлой сессии, найденных на диске сканом, — см. pendingScan).
+   дублей из прошлой сессии, найденных на диске сканом, — см. listLeftoverParts).
    .part.mp4 не трогаем, пока результат не встал на место под финальным
    именем — при любом сбое он остаётся ровно тем, чем был, и retry просто
    повторяет этот же шаг заново. Удаление .part.mp4 после успеха — отдельным
@@ -1573,83 +1569,79 @@ async function looksLikeMp4Start(file){
     return head.length>=8 && head[4]===0x66 && head[5]===0x74 && head[6]===0x79 && head[7]===0x70; // "ftyp"
   }catch(e){ return false; }
 }
-/* Список того, что ждёт перепаковки, — не память одной JS-сессии (её теряет
-   перезагрузка страницы), а прямой скан папки текущего урока: любой
-   lecture-*.part.mp4 либо остался от сбоя перепаковки, либо (реже) от
-   вкладки, закрытой до «Стоп». Привязан к конкретной папке (pendingScan.dir),
-   а не молча предполагает «текущий урок» — иначе после смены урока кнопка
-   могла бы предложить перепаковать файлы из уже закрытой папки.
+/* Что ждёт перепаковки — это не список в памяти вкладки, а файлы на диске:
+   любой lecture-*.part.mp4 в папке ОТКРЫТОГО СЕЙЧАС урока остался либо от
+   сбоя перепаковки, либо от вкладки, закрытой во время неё. Списка между
+   действиями не храним вовсе: кнопка по нажатию сканирует папку текущего
+   урока заново и обрабатывает то, что нашла. Число на кнопке — лишь
+   подсказка; устареть и увести перепаковку в чужую папку оно не может.
+   (Раньше список хранился с папкой, и три раунда ревью подряд находили,
+   как после смены урока он указывает не туда, — поэтому хранение убрано.)
 
-   Нулевого размера .part.mp4 в список не берём и не трогаем: это либо
-   запись, которую оператор закрыл до «Стоп» (заголовок ещё не успел
-   уйти на диск), либо чужая ЖИВАЯ запись в другой вкладке того же урока —
-   до close() её createWritable пишет в теневую копию, и снаружи файл видно
-   пустым. Тем же фильтром отсекаем файлы без ftyp в начале — на случай,
-   если что-то с похожим именем лежит в папке не от студии.
-
-   scanGen — на случай, если сканы наложатся (например: сразу после смены
-   урока успевает дозавершиться скан прошлого): побеждает тот, что стартовал
-   последним, а не тот, что первым доделал for-await. */
-let scanGen=0;
-async function scanForLeftoverParts(dir){
-  const myGen=++scanGen;
+   Нулевого размера .part.mp4 не берём и не трогаем: это либо запись,
+   закрытая до «Стоп», либо ЖИВАЯ запись в другой вкладке того же урока —
+   до close() createWritable пишет в теневую копию, и снаружи файл пустой.
+   Файлы без ftyp в начале тоже пропускаем — они не от студии. */
+async function listLeftoverParts(dir){
   const names=[];
-  if(dir){
-    try{
-      for await (const [name,h] of dir.entries()){
-        if(h.kind!=="file" || !/^lecture-.*\.part\.mp4$/i.test(name)) continue;
-        let file; try{ file=await h.getFile(); }catch(e){ continue; }
-        if(!file.size) continue;
-        if(!(await looksLikeMp4Start(file))) continue;
-        names.push(name.slice(0,-".part.mp4".length));
-      }
-    }catch(e){}
-  }
-  if(myGen!==scanGen) return;   // устарел — за это время стартовал более новый скан
-  pendingScan={dir,names};
-  updateRemuxRetryUI();
+  if(!dir) return names;
+  try{
+    for await (const [name,h] of dir.entries()){
+      if(h.kind!=="file" || !/^lecture-.*\.part\.mp4$/i.test(name)) continue;
+      let file; try{ file=await h.getFile(); }catch(e){ continue; }
+      if(!file.size) continue;
+      if(!(await looksLikeMp4Start(file))) continue;
+      names.push(name.slice(0,-".part.mp4".length));
+    }
+  }catch(e){}
+  return names;
 }
-/* Кнопка живёт по pendingScan + текущей занятости, а не по одной записи:
-   busy — тот же критерий, что блокирует «Запись» (см. startRec/updateRecUI),
-   плюс remuxing — свой отдельный флаг пакетной перепаковки (см. комментарий
-   у объявления remuxing выше). */
+let pendingCount=0, hintGen=0;
+/* Обновляет подсказку на кнопке по папке текущего урока. Скан, который
+   закончился, когда урок уже сменился, или которого обогнал более новый,
+   результат не применяет. */
+async function refreshRemuxHint(){
+  const my=++hintGen, dir=CURLESSON&&CURLESSON.dirHandle;
+  pendingCount=0; updateRemuxRetryUI();
+  const names=await listLeftoverParts(dir);
+  if(my!==hintGen || dir!==(CURLESSON&&CURLESSON.dirHandle)) return;
+  pendingCount=names.length; updateRemuxRetryUI();
+}
+/* busy — тот же критерий, что блокирует «Запись» (см. startRec/updateRecUI),
+   плюс remuxing — свой флаг перепаковки по кнопке (см. объявление выше). */
 function updateRemuxRetryUI(){
   const b=$("#remuxRetryBtn"); if(!b) return;
-  const busy=recording||starting||saving||remuxing, n=pendingScan.names.length;
+  const busy=recording||starting||saving||remuxing, n=pendingCount;
   if(!n || busy){ b.style.display="none"; b.disabled=true; return; }
   b.disabled=false; b.style.display="";
   b.textContent="🔁 подготовить для монтажа ("+n+")";
   b.title="Не готовы для монтажа (DaVinci и т.п.): "+n+" файл(ов) из прошлых записей — остались как lecture-*.part.mp4. Нажми, чтобы перепаковать.";
 }
-/* Обрабатывает весь pendingScan.names по очереди, каждый — тем же
-   remuxPartFile, каким и автоматический шаг после «Стоп». dir берём из
-   самого pendingScan (папка, которую реально сканировали), а не из
-   CURLESSON — если урок успел смениться, список и так уже обнулится
-   следующим сканом (см. scanForLeftoverParts), но лучше не полагаться на
-   то, что CURLESSON всё ещё указывает туда же. Отдельный флаг remuxing
-   (не saving!): saving занят своим finishRec, и делить один флаг на два
-   независимых async-потока — гонка, из-за которой один сбрасывает
-   занятость раньше времени за другого. */
+/* Папка — та, что открыта в момент нажатия, список — свежий скан её же.
+   Отдельный флаг remuxing (не saving!): saving занят своим finishRec, и
+   делить один флаг на два независимых async-потока — гонка. */
 async function retryRemuxAll(){
   if(recording||starting||saving||remuxing) return;
-  const dir=pendingScan.dir;
-  if(!dir||!pendingScan.names.length) return;
+  const dir=CURLESSON&&CURLESSON.dirHandle;
+  if(!dir) return;
   remuxing=true; updateRecUI();
-  setSaveMsg("готовлю файл для монтажа…",false,"Перепаковываю "+pendingScan.names.length+" файл(ов) для монтажа…");
-  const todo=pendingScan.names.slice();
-  let ok=0, fail=0;
-  for(const name of todo){
-    try{ await remuxPartFile(dir,name); ok++; }
-    catch(e){ fail++; }
-  }
-  await scanForLeftoverParts(dir);
-  if(fail){
+  let ok=0, fail=0, todo=[];
+  try{
+    todo=await listLeftoverParts(dir);
+    if(todo.length) setSaveMsg("готовлю файл для монтажа…",false,"Перепаковываю "+todo.length+" файл(ов) для монтажа…");
+    for(const name of todo){
+      try{ await remuxPartFile(dir,name); ok++; }
+      catch(e){ fail++; }
+    }
+  } finally { remuxing=false; updateRecUI(); }
+  if(!todo.length) setSaveMsg("");
+  else if(fail){
     setSaveMsg("⚠ готово "+ok+", не вышло "+fail,true,
       "Перепаковано "+ok+" из "+todo.length+", "+fail+" не удалось. Файлы остались как lecture-*.part.mp4 — можно нажать ещё раз.");
   }else{
     setSaveMsg("✓ готово для монтажа: "+ok,false,"Подготовлено для монтажа: "+ok+" файл(ов).");
   }
-  remuxing=false; updateRecUI();
+  refreshRemuxHint();
 }
 
 /* Диск отвалился или кончился — дальше писать в мёртвый поток бессмысленно.
@@ -1808,7 +1800,7 @@ async function finishRec(S){
          Сбой не переименовывает .part.mp4 в итоговое имя: файл под именем
          lecture-….mp4, который на самом деле не готов для монтажа, выглядит
          как готовый и прячет проблему — .part.mp4 так и остаётся .part.mp4,
-         а найдёт его и предложит повторить scanForLeftoverParts. */
+         а найдёт его и предложит повторить refreshRemuxHint. */
       setSaveMsg("готовлю файл для монтажа…");
       try{
         await remuxPartFile(S.dir,S.name);
@@ -1817,11 +1809,10 @@ async function finishRec(S){
         S.remuxFailed=true;
         S.actualVideoName=S.name+".part.mp4";
       }
-      /* Сканируем и обновляем кнопку только если урок за время перепаковки
-         не сменился: иначе это перезапишет pendingScan чужой, уже неактуальной
-         для экрана папкой. Если урок сменился, а .part.mp4 всё же остался —
-         его найдёт скан при следующем открытии именно этого урока. */
-      if(S.dir===(CURLESSON&&CURLESSON.dirHandle)) await scanForLeftoverParts(S.dir);
+      /* Подсказка на кнопке всегда считается по папке ОТКРЫТОГО урока. Если
+         урок за время перепаковки сменился, а .part.mp4 остался — его
+         найдёт скан при следующем открытии именно того урока. */
+      refreshRemuxHint();
     } else if(S.failed){
       /* Диск отвалился на середине: в S.chunks — только хвост потока после
          точки сбоя, без заголовка (ftyp/moov или EBML-Header — они уже ушли
@@ -1830,7 +1821,9 @@ async function finishRec(S){
          открыть), поэтому перепаковку не пробуем вовсе и просто отдаём хвост
          как записал MediaRecorder — как и раньше для WebM в этой же ветке. */
       if(S.chunks.length) saveBlobAs(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),S.name+S.ext);
-      alert("Диск перестал принимать запись — дозаписать "+S.name+S.ext+" в папку урока не вышло, недописанный файл там уже убран.\n\nТо, что оставалось в памяти после сбоя, скачано браузером как "+S.name+S.ext+" — это только часть записи после обрыва, без начала.");
+      alert("Диск перестал принимать запись — дозаписать "+S.name+S.ext+" в папку урока не вышло. Недописанный файл студия пытается убрать; если он всё же остался в папке — он неполный.\n\n"+
+        (S.chunks.length ? "То, что оставалось в памяти после сбоя, браузер скачивает как "+S.name+S.ext+" — это только часть записи после обрыва, без начала."
+                         : "В памяти после сбоя ничего не осталось — скачивать нечего."));
     } else if(!S.dir){
       /* Папки не было вовсе — в S.chunks весь поток целиком, с заголовком.
          Перед скачиванием перепаковываем и здесь тоже: иначе результат без
