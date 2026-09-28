@@ -669,8 +669,8 @@ function pdfWarningText(){
 /* ---------- HTML-дека Claude Design → кадры ----------
    То же, что делает render.js, но без Node и терминала: дека открывается прямо
    в студии, слайды листаются через <deck-stage>.goTo(), каждый снимается и
-   ложится в deck_frames/ рядом с HTML — p-NN.png + manifest.json, в том же
-   формате. Дальше урок записывается как обычная дека из кадров, офлайн.
+   ложится в deck_frames/ рядом с HTML — p-<поколение>NNN.png + manifest.json
+   (формат manifest тот же, что у render.js; порядок задаёт он, а не имена). Дальше урок записывается как обычная дека из кадров, офлайн.
 
    Сфотографировать кусок страницы браузер сам не умеет, поэтому снимаем свою же
    вкладку (getDisplayMedia): Chrome один раз спросит «Поделиться этой вкладкой».
@@ -688,18 +688,17 @@ function deckLabelId(l){ const m=(l||"").match(/([0-9]+\.[0-9]+)/); return m?m[1
 // зависит от того, с какого уровня открыли курс (сама папка урока или курс
 // целиком), а имя файла деки — нет.
 function srcBasename(p){ return String(p||"").split("/").pop(); }
-// Экран физически меньше 1920 точек, или окно уже развёрнуто на весь экран —
-// в обоих случаях советовать «разверни» уже некуда и незачем, это не поможет.
-function isWindowMaximized(){
-  // По внешнему размеру окна: innerHeight меньше экрана на панели самого Chrome
-  // даже у развёрнутого окна.
-  try{ return outerWidth>=screen.availWidth-8 && outerHeight>=screen.availHeight-8; }catch(e){ return false; }
+/* Помог бы полноэкранный режим: экран достаточно большой, а сейчас окно не
+   во весь экран (панели Chrome и системы съедают высоту даже у развёрнутого
+   окна — кадр 1920×1080 целиком помещается только в полноэкранном режиме). */
+function fullscreenWouldHelp(){
+  try{ const k=window.devicePixelRatio||1; return screen.width*k>=1920 && screen.height*k>=1200 && innerHeight<screen.height-2; }catch(e){ return false; }
 }
 function htmlHintText(){
   // Под деку остаётся экран минус панели Chrome и полоса статуса импорта:
   // по высоте нужен запас сверх 1080.
-  try{ const k=window.devicePixelRatio||1; if(screen.width*k<1920 || screen.height*k<1200) return "Экран меньше, чем нужно для 1920×1080, — кадры будут чуть мягче."; }catch(e){}
-  return "Разверни окно на весь экран; Chrome спросит, какую вкладку показать — выбери эту.";
+  try{ const k=window.devicePixelRatio||1; if(screen.width*k<1920 || screen.height*k<1200) return "На этом экране кадр 1920×1080 целиком не поместится — слайды выйдут чуть мягче."; }catch(e){}
+  return "Включи полноэкранный режим Chrome (на Mac — зелёная кнопка, на Windows — F11); Chrome спросит, какую вкладку показать — выбери эту.";
 }
 
 // Скрипт-мост живёт внутри песочницы и не разделяет область видимости со
@@ -954,7 +953,7 @@ async function htmlDeckToFrames(src, say){
     // «Разверни окно» подсказываем, только если окно и правда не развёрнуто:
     // на экране меньше 1920 точек разворачивать уже некуда, совет вводил бы в
     // заблуждение — в этом случае честно предупредили ещё до «Начать».
-    if(lowRes && !isWindowMaximized()) setTimeout(()=>alert("Кадры сняты меньше 1920×1080 — окно Chrome было не на весь экран. Разверни его на весь экран (на Mac — зелёная кнопка в углу окна) и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
+    if(lowRes && fullscreenWouldHelp()) setTimeout(()=>alert("Кадры сняты меньше 1920×1080. Включи полноэкранный режим Chrome (на Mac — зелёная кнопка в углу окна, на Windows — F11) и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
     return {urls, manifest};
   } catch(e){
     // Частично снятые кадры при неудаче не нужны — их blob-URL иначе держат
@@ -1022,7 +1021,7 @@ async function loadLesson(lesson, src){
       const acc=[];
       for(const m of manifest.slides){ const h=m&&m.file&&by.get(String(m.file).toLowerCase()); if(h)acc.push([m.file,h]); }
       if(acc.length<manifest.slides.length)
-        throw new Error("В «"+src.name+"» не хватает "+(manifest.slides.length-acc.length)+" кадр(ов) из manifest.json. Импортируй деку заново.");
+        throw new Error("В «"+src.name+"» не хватает "+(manifest.slides.length-acc.length)+" кадр(ов) из manifest.json. Если это HTML-дека — импортируй её заново; если кадры сделаны вручную — поправь manifest.json или положи недостающие файлы.");
       if(acc.length) picked=acc;
     }
     if(picked) files.length=0, files.push(...picked);
