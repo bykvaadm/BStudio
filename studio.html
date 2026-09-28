@@ -1820,8 +1820,9 @@ async function finishRec(S){
          такой обрубок Mediabunny не разберёт (нет заголовка — нечего даже
          открыть), поэтому перепаковку не пробуем вовсе и просто отдаём хвост
          как записал MediaRecorder — как и раньше для WebM в этой же ветке. */
-      if(S.chunks.length) saveBlobAs(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),S.name+S.ext);
-      alert("Диск перестал принимать запись — дозаписать "+S.name+S.ext+" в папку урока не вышло. Недописанный файл студия пытается убрать; если он всё же остался в папке — он неполный.\n\n"+
+      S.hadTail=S.chunks.length>0;
+      if(S.hadTail) saveBlobAs(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),S.name+S.ext);
+      alert("Диск перестал принимать запись — дозаписать "+S.name+S.ext+" в папку урока не вышло. Если файл с этим именем остался в папке урока — он неполный.\n\n"+
         (S.chunks.length ? "То, что оставалось в памяти после сбоя, браузер скачивает как "+S.name+S.ext+" — это только часть записи после обрыва, без начала."
                          : "В памяти после сбоя ничего не осталось — скачивать нечего."));
     } else if(!S.dir){
@@ -1851,7 +1852,10 @@ async function finishRec(S){
       setSaveMsg("⚠ скачан, не готов для монтажа",true,
         "Скачано: "+S.actualVideoName+" — играется, но перепаковать для монтажа (DaVinci и т.п.) не вышло.");
     } else {
-      setSaveMsg(S.failed?"сохранено скачиванием: "+S.actualVideoName:"сохранено: "+S.actualVideoName,S.failed);
+      if(!S.failed) setSaveMsg("сохранено: "+S.actualVideoName);
+      else setSaveMsg(S.hadTail?"⚠ скачан только хвост записи":"⚠ запись оборвалась",true,
+        S.hadTail?"Диск перестал принимать запись. Браузер скачал "+S.actualVideoName+" — только часть после обрыва."
+                 :"Диск перестал принимать запись, в памяти после сбоя ничего не осталось. Файл в папке урока, если он там есть, неполный.");
     }
   } finally {
     saving=false;
