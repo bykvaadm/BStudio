@@ -684,6 +684,19 @@ function pdfWarningText(){
    (postMessage): в текст HTML перед загрузкой вшивается маленький скрипт-мост,
    который сообщает о готовности деки и слайдов и выполняет goTo по команде. */
 function deckLabelId(l){ const m=(l||"").match(/([0-9]+\.[0-9]+)/); return m?m[1]:(l||"").trim().toLowerCase(); }
+// Базовое имя без подпапки — им сравниваем «та же дека или другая»: путь
+// зависит от того, с какого уровня открыли курс (сама папка урока или курс
+// целиком), а имя файла деки — нет.
+function srcBasename(p){ return String(p||"").split("/").pop(); }
+// Экран физически меньше 1920 точек, или окно уже развёрнуто на весь экран —
+// в обоих случаях советовать «разверни» уже некуда и незачем, это не поможет.
+function isWindowMaximized(){
+  try{ return innerWidth>=screen.availWidth-2 && innerHeight>=screen.availHeight-2; }catch(e){ return false; }
+}
+function htmlHintText(){
+  try{ if(screen.width*(window.devicePixelRatio||1) < 1920) return "Экран меньше 1920 точек — кадры будут чуть мягче."; }catch(e){}
+  return "Chrome спросит, какую вкладку показать — выбери эту.";
+}
 
 // Скрипт-мост живёт внутри песочницы и не разделяет область видимости со
 // студией — весь обмен только через postMessage. Ищет деку поллингом (а не
@@ -997,8 +1010,13 @@ async function afterCourse(handle){
     const sel=$("#lessonSel"); sel.innerHTML="";
     ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name+(l.scriptHandle?"":" — без речитатива"); sel.appendChild(o); });
     const last=LS("lastLesson",null); if(last!=null){ const idx=LESSONS.findIndex(l=>l.name===last&&l.ready); if(idx>=0) sel.value=String(idx); }
+    $("#lessonBox").style.display="block";
+    // Текст статус-строки отдаём fillSources()/updateSourceHint() — они сами
+    // решают, что показать: подсказку про HTML-деку или число найденных
+    // уроков. Присвой мы "N урок(ов) найдено" здесь и ПОСЛЕ fillSources(),
+    // подсказка про HTML успевала бы появиться и тут же затираться этой
+    // строкой — так и было раньше в главном сценарии (папка с одной декой).
     sel.onchange=fillSources; fillSources();
-    $("#lessonBox").style.display="block"; $("#setupMsg").textContent=ready.length+" урок(ов) найдено.";
   }catch(e){ $("#setupMsg").textContent="Ошибка чтения папки: "+e.message; $("#setupMsg").className="msg err"; }
 }
 // Заполняет список источников выбранного урока. PPTX показываем, но выбрать
@@ -1017,12 +1035,16 @@ function fillSources(){
   ss.value=String(idx>=0?idx:(lesson.sources||[]).findIndex(x=>x.kind!=="pptx"));
   ss.onchange=updateSourceHint; updateSourceHint();
 }
-// HTML-деку студия снимает через захват вкладки сразу по клику «Начать» — окно
-// нужно развернуть ДО этого, разворачивать посреди съёмки уже поздно.
+// HTML-деку студия снимает через захват вкладки сразу по клику «Начать» —
+// подсказка про это должна быть видна именно тут, а не только всплывать
+// alert'ом постфактум; при выборе не-HTML источника гаснет обратно в обычный
+// счётчик уроков (иначе подсказка про HTML-деку осталась бы висеть даже после
+// того, как выбрали PDF или кадры).
 function updateSourceHint(){
   const lesson=LESSONS[+$("#lessonSel").value]; const src=(lesson.sources||[])[+$("#sourceSel").value];
   const msg=$("#setupMsg");
-  if(src && src.kind==="html"){ msg.textContent="Перед «Начать» разверни окно браузера на весь экран — так кадры выйдут чёткими."; msg.className="msg"; }
+  if(src && src.kind==="html"){ msg.textContent=htmlHintText(); msg.className="msg"; }
+  else{ msg.textContent=LESSONS.filter(l=>l.ready).length+" урок(ов) найдено."; msg.className="msg"; }
 }
 
 async function startSelected(){
