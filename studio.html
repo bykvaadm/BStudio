@@ -314,6 +314,7 @@ input[type=range]{width:90px;}
      <button id="stopbtn" style="display:none" title="стоп">⏹</button>
      <span id="recTime" class="lab">0:00</span>
      <span id="savemsg"></span>
+     <button id="remuxRetryBtn" style="display:none"></button>
      <span class="vdiv"></span>
      <button id="cutbtn" title="поставить отметку (таймкод) в записи">⚑ отметка</button>
      <span class="vdiv"></span>
@@ -1159,6 +1160,11 @@ async function startSelected(){
     if(warn){ alert("⚠ "+warn); }
     $("#setup").style.display="none"; $("#bar").style.display="flex";
     startStudio();
+    /* Дубли из прошлых сессий, для которых перепаковка не доехала до конца
+       (сбой, закрытая вкладка), лежат на диске как lecture-*.part.mp4 — не
+       в памяти этой вкладки. Проверяем при каждом открытии урока, не только
+       сразу после записи: страница вполне могла быть перезагружена. */
+    refreshRemuxHint();
   }catch(e){ $("#setupMsg").textContent=e.message; $("#setupMsg").className="msg err"; }
 }
 function bindSetup(){
@@ -1203,7 +1209,13 @@ const CAMPOS={tl:["l","t"],tc:["c","t"],tr:["r","t"],mr:["r","m"],br:["r","b"],b
 const CAMSEQ=["tl","tc","tr","mr","br","bc","bl","ml"];
 let readPos=0; const PROMPT_PAD=14; let autoTimer=0; let slideAccum=0, slideLast=Date.now(); let prePausePlaying=false; let scrollHideTimer=0; let advTimer=0; let advArmed=true; let advChaining=false; let scrollAnim=0, readTarget=null;
 let camStream=null, camPending=null, micStream=null, micTrack=null, micPending=null, audioCtx=null, analyser=null, vuSrc=null, vuData=null, rec=null, recording=false, recAccum=0, recLast=0, recPaused=false, drawing=false, started=false;
-let recSession=null, starting=false, saving=false;
+/* saving — занят finishRec (одна конкретная запись). remuxing — занят
+   retryRemuxAll (пакетная перепаковка того, что найдено на диске). Флаги
+   разные и разными путями сбрасываются нарочно: раньше оба пользовались
+   одним saving, и async-ремукс от кнопки «повторить» мог сброситься чужим
+   finally от совсем другой записи (и наоборот) — гонка. Что ждёт
+   перепаковки, не хранится вовсе — см. listLeftoverParts/refreshRemuxHint. */
+let recSession=null, starting=false, saving=false, remuxing=false;
 
 function showSlide(i){
   const n=Math.max(0,Math.min(SLIDES.length-1,i));
@@ -1818,9 +1830,12 @@ function runCountdown(n){return new Promise(res=>{const el=$("#countdown");if(!e
    обработчики MediaRecorder захватывают именно его. Глобалки тут не годятся:
    onstop доезжает асинхронно, и к его моменту оператор уже мог начать следующий
    дубль или уйти в другой урок — старый файл получил бы чужие маркеры. */
-function newRecSession(name,dir,mime,ext){return {name,dir,mime,ext,writable:null,chunks:[],markers:[],queue:Promise.resolve(),discard:false,failed:false};}
+function newRecSession(name,dir,mime,ext){return {name,dir,mime,ext,writeName:null,actualVideoName:name+ext,writable:null,chunks:[],markers:[],queue:Promise.resolve(),discard:false,failed:false,remuxFailed:false};}
 function recStamp(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+"-"+p(d.getMinutes())+"-"+p(d.getSeconds());}
-function setSaveMsg(t,warn){const e=$("#savemsg");if(!e)return;e.textContent=t||"";e.style.display=t?"":"none";e.style.color=warn?"#ff8a3d":"#7a8290";}
+/* Строка узкая (34ch, ellipsis) — короткий текст, суть в начале. Полный
+   текст (что случилось и что с этим делать) — в title, во всплывающей
+   подсказке; full не задан — дублирует короткий. */
+function setSaveMsg(t,warn,full){const e=$("#savemsg");if(!e)return;e.textContent=t||"";e.title=(full!==undefined?full:t)||"";e.style.display=t?"":"none";e.style.color=warn?"#ff8a3d":"#7a8290";}
 /* Патчи — два числа в уже записанных байтах. Blob.slice не копирует данные,
    поэтому склейка «кусок — число — кусок» дёшева даже на двух гигабайтах. */
 function patchBlob(blob,patches){
@@ -1832,18 +1847,221 @@ function patchBlob(blob,patches){
 }
 function saveBlobAs(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),60000);}
 
+/* ======== MP4: перепаковка fragmented → обычный ========
+   MediaRecorder пишет MP4 тем же живым потоком, что и WebM: ftyp, moov с
+   пустыми таблицами и mvex, дальше сотни пар moof/mdat. Плеер по ним
+   таймлайн восстанавливает (перемотка работает без правок — см. комментарий
+   у MIMES выше), а вот DaVinci и подобные монтажки такой файл не открывают.
+   В отличие от WebM, дописать оглавление на лету нельзя: moov с полными
+   таблицами для MP4 нужно знать заранее, до последнего кадра. Поэтому чиним
+   после close(): читаем дописанный .part.mp4 целиком и перекладываем пакеты
+   обеих дорожек в обычный MP4 — один moov, ни одного moof, без единого байта
+   перекодирования (см. remuxMp4 ниже — это жёсткое требование, не просто
+   предпочтение). Библиотека (Mediabunny, vendor/, MPL-2.0 — см.
+   vendor/LICENSE-mediabunny) грузится только здесь и только ради этого шага:
+   остальная запись от неё не зависит и без неё не ломается. */
+let mediabunnyPromise=null;
+function loadMediabunny(){
+  if(!mediabunnyPromise) mediabunnyPromise=import("./vendor/mediabunny.min.js");
+  return mediabunnyPromise;
+}
+/* source — Blob/File с fragmented MP4. sink — либо WritableStream (в т.ч.
+   FileSystemWritableFileStream — тогда результат льётся прямо на диск и не
+   держится в памяти целиком), либо строка "memory" — тогда собирается в
+   ArrayBuffer и возвращается.
+   copy:{mode:"forced"} — явный запрет перекодирования: по умолчанию (mode
+   не задан, т.е. 'preferred') Conversion сама решает и там, где скопировать
+   пакет не выходит, тихо перекодирует его — нам это нельзя, задача только
+   перекладывать пакеты как есть. В 'forced' она вместо этого выбрасывает
+   такую дорожку в discardedTracks — и дальше мы ещё раз перепроверяем
+   руками: все дорожки входа обязаны оказаться среди utilizedTracks, а
+   discardedTracks должен быть пуст. Раз кодек входа (H.264/AAC или
+   vp9/opus — что дал MediaRecorder) и так поддерживается MP4-контейнером на
+   выходе, копирование проходит без декодирования ни кадра — поэтому работает
+   и там, где у браузера нет ни декодера, ни энкодера нужного кодека, только
+   сам контейнер. */
+async function remuxMp4(source,sink){
+  const MB=await loadMediabunny();
+  const target=sink==="memory" ? new MB.BufferTarget() : new MB.StreamTarget(sink);
+  const input=new MB.Input({source:new MB.BlobSource(source),formats:MB.ALL_FORMATS});
+  const output=new MB.Output({format:new MB.Mp4OutputFormat({fastStart:false}),target});
+  const conv=await MB.Conversion.init({input,output,copy:{mode:"forced"}});
+  const allTracks=await input.getTracks();
+  if(!conv.isValid || conv.discardedTracks.length || allTracks.some(t=>!conv.utilizedTracks.includes(t))){
+    const why=conv.discardedTracks.map(d=>d.reason).join(", ");
+    throw new Error("перекодирование запрещено, а скопировать пакеты как есть не вышло"+(why?(" ("+why+")"):""));
+  }
+  await conv.execute();
+  return sink==="memory" ? target.buffer : null;
+}
+/* Перекладывает srcHandle в tmpName внутри dir. Сбой на этом шаге не должен
+   оставлять после себя ничего, кроме исходного файла: недописанный tmp
+   убирается тут же. */
+async function remuxToTemp(dir,srcHandle,tmpName){
+  const out=await (await dir.getFileHandle(tmpName,{create:true})).createWritable();
+  try{
+    const file=await srcHandle.getFile();
+    await remuxMp4(file,out);
+  }catch(e){
+    try{ await out.abort(); }catch(e2){}
+    try{ await dir.removeEntry(tmpName); }catch(e2){}
+    throw e;
+  }
+  return await dir.getFileHandle(tmpName);
+}
+/* tmp → finalName. move — обычно атомарный: файл под итоговым именем либо
+   не появляется вовсе, либо сразу целиком готов, без огрызка на середине.
+   Если move нет или он бросил — запасной путь копированием. createWritable
+   тоже атомарен: до close() он пишет в свою теневую копию, а не в реальный
+   finalName, — поэтому существующий finalName (если такой уже был, скажем,
+   от предыдущей удачной перепаковки) сбоем на write/close не портится и
+   трогать его незачем, довольно одного abort() на своём writable. Уборка
+   tmp — заведомо отдельный, последний шаг: результат уже лежит под
+   finalName, и ошибка одного только removeEntry(tmp) не должна выглядеть
+   как провал всей операции и уж тем более откатывать готовое. */
+async function swapInFinal(dir,tmpHandle,finalName){
+  if(typeof tmpHandle.move==="function"){
+    try{ await tmpHandle.move(finalName); return; }catch(e){ /* падаем на копирование ниже */ }
+  }
+  const data=await tmpHandle.getFile();
+  const w=await (await dir.getFileHandle(finalName,{create:true})).createWritable();
+  try{
+    await w.write(data);
+    await w.close();
+  }catch(e){
+    try{ await w.abort(); }catch(e2){}
+    throw e;   // finalName не тронут — writable ещё не закрывался
+  }
+  try{ await dir.removeEntry(tmpHandle.name); }catch(e){ /* tmp просто останется лишним рядом — не страшно */ }
+}
+/* Общий шаг «<name>.part.mp4 → <name>.mp4» — им пользуется и автоматическая
+   перепаковка сразу после «Стоп», и повтор по кнопке (в том числе для
+   дублей из прошлой сессии, найденных на диске сканом, — см. listLeftoverParts).
+   .part.mp4 не трогаем, пока результат не встал на место под финальным
+   именем — при любом сбое он остаётся ровно тем, чем был, и retry просто
+   повторяет этот же шаг заново. Удаление .part.mp4 после успеха — отдельным
+   try: споткнись оно, готовый .mp4 это не отменяет и трогать его нельзя. */
+async function remuxPartFile(dir,name){
+  const partName=name+".part.mp4", finalName=name+".mp4", tmpName=name+".remux-tmp.mp4";
+  const partHandle=await dir.getFileHandle(partName);
+  const tmpHandle=await remuxToTemp(dir,partHandle,tmpName);
+  await swapInFinal(dir,tmpHandle,finalName);
+  try{ await dir.removeEntry(partName); }catch(e){ /* готовый .mp4 уже на месте, это не повод его трогать */ }
+}
+/* Ветка без папки: то, что накопилось в памяти, — уже целый fragmented MP4
+   от начала (ftyp/moov) до конца, перед скачиванием перепаковываем и там
+   же, в памяти. На длинном дубле без папки это держит в RAM одновременно и
+   исходные чанки, и результат ремукса — для дубля на час-полтора может быть
+   заметно; отдельного предела студия не ставит, полагаясь на то, что запись
+   без выбранной папки — редкий, короткий случай (см. finishRec: для дублей
+   на диске в память ничего не собирается). */
+async function remuxBlobInMemory(blob){
+  const buf=await remuxMp4(blob,"memory");
+  return new Blob([buf],{type:"video/mp4"});
+}
+/* Файл начинается с ftyp — минимальная проверка, что это вообще MP4, а не
+   что попало с похожим именем или ещё не начавшая писаться заготовка. */
+async function looksLikeMp4Start(file){
+  try{
+    const head=new Uint8Array(await file.slice(0,12).arrayBuffer());
+    return head.length>=8 && head[4]===0x66 && head[5]===0x74 && head[6]===0x79 && head[7]===0x70; // "ftyp"
+  }catch(e){ return false; }
+}
+/* Что ждёт перепаковки — это не список в памяти вкладки, а файлы на диске:
+   любой lecture-*.part.mp4 в папке ОТКРЫТОГО СЕЙЧАС урока остался либо от
+   сбоя перепаковки, либо от вкладки, закрытой во время неё. Списка между
+   действиями не храним вовсе: кнопка по нажатию сканирует папку текущего
+   урока заново и обрабатывает то, что нашла. Число на кнопке — лишь
+   подсказка; устареть и увести перепаковку в чужую папку оно не может.
+   (Раньше список хранился с папкой, и три раунда ревью подряд находили,
+   как после смены урока он указывает не туда, — поэтому хранение убрано.)
+
+   Нулевого размера .part.mp4 не берём и не трогаем: это либо запись,
+   закрытая до «Стоп», либо ЖИВАЯ запись в другой вкладке того же урока —
+   до close() createWritable пишет в теневую копию, и снаружи файл пустой.
+   Файлы без ftyp в начале тоже пропускаем — они не от студии. */
+async function listLeftoverParts(dir){
+  const names=[];
+  if(!dir) return names;
+  try{
+    for await (const [name,h] of dir.entries()){
+      if(h.kind!=="file" || !/^lecture-.*\.part\.mp4$/i.test(name)) continue;
+      let file; try{ file=await h.getFile(); }catch(e){ continue; }
+      if(!file.size) continue;
+      if(!(await looksLikeMp4Start(file))) continue;
+      names.push(name.slice(0,-".part.mp4".length));
+    }
+  }catch(e){}
+  return names;
+}
+let pendingCount=0, hintGen=0;
+/* Обновляет подсказку на кнопке по папке текущего урока. Скан, который
+   закончился, когда урок уже сменился, или которого обогнал более новый,
+   результат не применяет. */
+async function refreshRemuxHint(){
+  const my=++hintGen, dir=CURLESSON&&CURLESSON.dirHandle;
+  pendingCount=0; updateRemuxRetryUI();
+  const names=await listLeftoverParts(dir);
+  if(my!==hintGen || dir!==(CURLESSON&&CURLESSON.dirHandle)) return;
+  pendingCount=names.length; updateRemuxRetryUI();
+}
+/* busy — тот же критерий, что блокирует «Запись» (см. startRec/updateRecUI),
+   плюс remuxing — свой флаг перепаковки по кнопке (см. объявление выше). */
+function updateRemuxRetryUI(){
+  const b=$("#remuxRetryBtn"); if(!b) return;
+  const busy=recording||starting||saving||remuxing, n=pendingCount;
+  if(!n || busy){ b.style.display="none"; b.disabled=true; return; }
+  b.disabled=false; b.style.display="";
+  b.textContent="🔁 подготовить для монтажа ("+n+")";
+  b.title="Не готовы для монтажа (DaVinci и т.п.): "+n+" файл(ов) из прошлых записей — остались как lecture-*.part.mp4. Нажми, чтобы перепаковать.";
+}
+/* Папка — та, что открыта в момент нажатия, список — свежий скан её же.
+   Отдельный флаг remuxing (не saving!): saving занят своим finishRec, и
+   делить один флаг на два независимых async-потока — гонка. */
+async function retryRemuxAll(){
+  if(recording||starting||saving||remuxing) return;
+  const dir=CURLESSON&&CURLESSON.dirHandle;
+  if(!dir) return;
+  remuxing=true; updateRecUI();
+  let ok=0, fail=0, todo=[];
+  try{
+    todo=await listLeftoverParts(dir);
+    if(todo.length) setSaveMsg("готовлю файл для монтажа…",false,"Перепаковываю "+todo.length+" файл(ов) для монтажа…");
+    for(const name of todo){
+      try{ await remuxPartFile(dir,name); ok++; }
+      catch(e){ fail++; }
+    }
+  } finally { remuxing=false; updateRecUI(); }
+  if(!todo.length) setSaveMsg("");
+  else if(fail){
+    setSaveMsg("⚠ готово "+ok+", не вышло "+fail,true,
+      "Перепаковано "+ok+" из "+todo.length+", "+fail+" не удалось. Файлы остались как lecture-*.part.mp4 — можно нажать ещё раз.");
+  }else{
+    setSaveMsg("✓ готово для монтажа: "+ok,false,"Подготовлено для монтажа: "+ok+" файл(ов).");
+  }
+  refreshRemuxHint();
+}
+
 /* Диск отвалился или кончился — дальше писать в мёртвый поток бессмысленно.
    Переходим на буфер в памяти: остаток дубля хотя бы скачается по «Стоп».
-   Молча этого делать нельзя, поэтому строка состояния краснеет сразу. */
+   Молча этого делать нельзя, поэтому строка состояния краснеет сразу.
+   abort() не удаляет файл — на диске остаётся пустой (или недописанный)
+   .part.mp4, который никогда не станет валидным MP4 (заголовок уже ушёл на
+   диск раньше, а хвост теперь копится в памяти) — таскать его за собой
+   незачем, убираем в фоне. */
 function recWriteFailed(S){
   if(S.failed)return; S.failed=true;
   const w=S.writable; S.writable=null;
-  if(w){try{w.abort();}catch(e){}}
+  (async()=>{
+    if(w){ try{await w.abort();}catch(e){} }
+    if(S.dir && S.writeName){ try{await S.dir.removeEntry(S.writeName);}catch(e){} }
+  })();
   setSaveMsg("диск не принимает запись — пишу в память, файл скачается по «Стоп»",true);
 }
 
 async function startRec(){
-  if(recording||starting||saving)return; starting=true;
+  if(recording||starting||saving||remuxing)return; starting=true;
+  updateRemuxRetryUI();   // прячет кнопку повтора сразу, не дожидаясь updateRecUI ниже
   try{
     const aTrack=await ensureAudio();
     const [cw,ch]=recSize();
@@ -1852,9 +2070,14 @@ async function startRec(){
     const hasAudio=aTrack&&aTrack.readyState==="live"; if(hasAudio)tracks.push(aTrack);
     const mime=pickMime(), opts=mime?{mimeType:mime,videoBitsPerSecond:6000000,audioBitsPerSecond:128000}:{};
     const S=newRecSession("lecture-"+recStamp(new Date()),(CURLESSON&&CURLESSON.dirHandle)||null,mime,extFor(mime));
-    /* WebM приезжает без оглавления — строим его на лету. Для MP4 не нужно. */
+    /* WebM приезжает без оглавления — строим его на лету. Для MP4 вместо
+       этого ремукс после close() (см. remuxPartFile в finishRec), а пока
+       идёт запись, имя на диске — .part.mp4: «Стоп» на середине записи
+       никогда не выдаст недописанный поток MediaRecorder за готовый для
+       монтажа файл — тот появится только когда перепаковка отработает. */
     S.ix = S.ext===".webm" ? createWebmIndexer() : null;
-    try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+S.ext,{create:true}); S.writable=await fh.createWritable(); } }catch(e){ S.writable=null; S.dir=null; }
+    S.writeName = S.ext===".mp4" ? (S.name+".part.mp4") : (S.name+S.ext);
+    try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.writeName,{create:true}); S.writable=await fh.createWritable(); } }catch(e){ S.writable=null; S.dir=null; }
     rec=new MediaRecorder(new MediaStream(tracks),opts);
     recSession=S; setSaveMsg("");
     rec.ondataavailable=e=>{
@@ -1941,7 +2164,7 @@ async function finishRec(S){
     await S.queue.catch(()=>{});
     if(S.discard){
       if(S.writable){ try{ await S.writable.abort(); }catch(e){} S.writable=null; }
-      if(S.dir){ try{ await S.dir.removeEntry(S.name+S.ext); }catch(e){} }
+      if(S.dir){ try{ await S.dir.removeEntry(S.writeName||(S.name+S.ext)); }catch(e){} }
       S.chunks=[]; setSaveMsg(""); return;
     }
     /* Оглавление дописывается последним: Cues в хвост, затем на место —
@@ -1967,14 +2190,71 @@ async function finishRec(S){
       try{ await S.writable.close(); S.writable=null; }
       catch(e){ S.writable=null; S.failed=true; }
     }
-    if(S.failed||!S.dir){
-      if(S.chunks.length) saveBlobAs(patchBlob(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),patches),S.name+S.ext);
-      if(S.failed) alert("Не удалось дописать "+S.name+S.ext+" в папку урока.\n\nТо, что успели удержать в памяти, отдано браузеру на скачивание. Файл в папке урока может оказаться неполным — проверь оба.");
+    if(S.ext===".mp4" && S.dir && !S.failed){
+      /* Дубль дописан на диск как .part.mp4 — то, что MediaRecorder отдал
+         живым потоком: fragmented MP4, DaVinci такой не открывает. Пока
+         идёт перепаковка, saving остаётся true — предупреждение о закрытии
+         вкладки продолжает действовать, это тоже часть сохранения дубля.
+         Сбой не переименовывает .part.mp4 в итоговое имя: файл под именем
+         lecture-….mp4, который на самом деле не готов для монтажа, выглядит
+         как готовый и прячет проблему — .part.mp4 так и остаётся .part.mp4,
+         а найдёт его и предложит повторить refreshRemuxHint. */
+      setSaveMsg("готовлю файл для монтажа…");
+      try{
+        await remuxPartFile(S.dir,S.name);
+        S.remuxFailed=false;
+      }catch(e){
+        S.remuxFailed=true;
+        S.actualVideoName=S.name+".part.mp4";
+      }
+      /* Подсказка на кнопке всегда считается по папке ОТКРЫТОГО урока. Если
+         урок за время перепаковки сменился, а .part.mp4 остался — его
+         найдёт скан при следующем открытии именно того урока. */
+      refreshRemuxHint();
+    } else if(S.failed){
+      /* Диск отвалился на середине: в S.chunks — только хвост потока после
+         точки сбоя, без заголовка (ftyp/moov или EBML-Header — они уже ушли
+         на диск раньше, в файл, который recWriteFailed сам убрал). Для MP4
+         такой обрубок Mediabunny не разберёт (нет заголовка — нечего даже
+         открыть), поэтому перепаковку не пробуем вовсе и просто отдаём хвост
+         как записал MediaRecorder — как и раньше для WebM в этой же ветке. */
+      S.hadTail=S.chunks.length>0;
+      if(S.hadTail) saveBlobAs(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),S.name+S.ext);
+      alert("Диск перестал принимать запись — дозаписать "+S.name+S.ext+" в папку урока не вышло. Если файл с этим именем остался в папке урока — он неполный.\n\n"+
+        (S.chunks.length ? "То, что оставалось в памяти после сбоя, браузер скачивает как "+S.name+S.ext+" — это только часть записи после обрыва, без начала."
+                         : "В памяти после сбоя ничего не осталось — скачивать нечего."));
+    } else if(!S.dir){
+      /* Папки не было вовсе — в S.chunks весь поток целиком, с заголовком.
+         Перед скачиванием перепаковываем и здесь тоже: иначе результат без
+         папки был бы единственным MP4 студии, который для монтажа не готов. */
+      if(S.chunks.length){
+        let blob=patchBlob(new Blob(S.chunks,{type:(S.mime||"video/webm").split(";")[0]}),patches);
+        if(S.ext===".mp4"){
+          setSaveMsg("готовлю файл для монтажа…");
+          try{ blob=await remuxBlobInMemory(blob); }
+          catch(e){ S.remuxFailed=true; /* не вышло — отдаём как есть, лишь бы не потерять дубль */ }
+        }
+        saveBlobAs(blob,S.name+S.ext);
+      }
     }
     S.chunks=[];
     await writeMarkers(S);
     if(!S.discard) await writeSyncLog(S);
-    setSaveMsg(S.failed?"сохранено скачиванием: "+S.name+S.ext:"сохранено: "+S.name+S.ext,S.failed);
+    if(S.remuxFailed && S.dir){
+      setSaveMsg("⚠ не готов для монтажа — жми 🔁",true,
+        "Сохранено: "+S.actualVideoName+" — играется, но для монтажа (DaVinci и т.п.) не готов. "
+        +"Открыть в DaVinci не получится, пока не нажмёшь «🔁 подготовить для монтажа».");
+    } else if(S.remuxFailed){
+      /* Без папки перепаковку повторить нечем — исходник уже ушёл в
+         скачивание единственной копией, второго на диске нет. */
+      setSaveMsg("⚠ скачан, не готов для монтажа",true,
+        "Скачано: "+S.actualVideoName+" — играется, но перепаковать для монтажа (DaVinci и т.п.) не вышло.");
+    } else {
+      if(!S.failed) setSaveMsg("сохранено: "+S.actualVideoName);
+      else setSaveMsg(S.hadTail?"⚠ скачан только хвост записи":"⚠ запись оборвалась",true,
+        S.hadTail?"Диск перестал принимать запись. Браузер скачал "+S.actualVideoName+" — только часть после обрыва."
+                 :"Диск перестал принимать запись, в памяти после сбоя ничего не осталось. Файл в папке урока, если он там есть, неполный.");
+    }
   } finally {
     saving=false;
     if(recSession===S) recSession=null;
@@ -1985,7 +2265,7 @@ async function finishRec(S){
 async function writeMarkers(S){
   if(!S.markers.length) return;
   const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда"};
-  const lines=["Запись "+S.name+S.ext,"Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
+  const lines=["Запись "+S.actualVideoName,"Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
   for(const m of S.markers) lines.push(tcFmt(m.t)+"  "+(lab[m.type]||m.type)+"  — слайд "+m.slide);
   const text=lines.join("\n");
   try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.name+".markers.txt",{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close(); return; } }catch(e){}
@@ -1996,17 +2276,19 @@ function stopRecDiscard(){if(rec&&recording){if(recSession)recSession.discard=tr
 function restartShow(){if(recording&&!confirm("Идёт запись. Начать презентацию сначала? Текущая запись будет отброшена."))return;if(recording)stopRecDiscard();recAccum=0;inkBySlide.clear();inkUndoBySlide.clear();showSlide(0);}
 function togglePause(){if(!recording||!rec)return;if(recPaused){try{rec.resume();}catch(e){}recPaused=false;st.playing=prePausePlaying;syncPlay();}else{try{rec.pause();}catch(e){}recPaused=true;prePausePlaying=st.playing;st.playing=false;cancelAdv();advArmed=true;syncPlay();addMarker("pause");}updateRecUI();}
 function updateRecUI(){
-  const on=recording,p=recPaused,sv=saving,show=(id,v)=>{const e=$(id);if(e)e.style.display=v?"":"none";};
+  const on=recording,p=recPaused,sv=saving||remuxing,show=(id,v)=>{const e=$(id);if(e)e.style.display=v?"":"none";};
   recDot.classList.toggle("on",on&&!p);
   recDot.style.background=on?(p?"#e0a030":""):(sv?"#3b82f6":"");
   show("#recbtn",!on);show("#pausebtn",on);show("#stopbtn",on);
   show("#m_rec",!on);show("#m_pause",on);show("#m_stop",on);
-  /* Пока файл дописывается, новый дубль начинать нельзя: он перетрёт rec и
-     оставит предыдущий без владельца. Кнопка так и говорит, чем занята. */
+  /* Пока файл дописывается или готовится для монтажа, новый дубль начинать
+     нельзя: он перетрёт rec и оставит предыдущий без владельца. Кнопка так
+     и говорит, чем занята — «сохраняю» теперь покрывает и подготовку MP4. */
   const rb=$("#recbtn");if(rb){rb.disabled=sv;rb.textContent=sv?"⏳ сохраняю":"⏺ Запись";}
   const mrb=$("#m_rec");if(mrb)mrb.disabled=sv;
   const t=p?"▶":"⏸",pb=$("#pausebtn"),mp=$("#m_pause");if(pb)pb.textContent=t;if(mp)mp.textContent=t;
   const td=$("#tdot");if(td)td.style.background=on?(p?"#e0a030":"#ff3b30"):"#555";
+  updateRemuxRetryUI();
 }
 function recSecs(){return recording?Math.floor(recAccum/1000):0;}
 function hidePanel(){$("#bar").style.display="none";$("#minibar").style.display="flex";}
@@ -2019,7 +2301,7 @@ setInterval(()=>{const now=Date.now();const onTitle=!!(SLIDES[st.i]&&SLIDES[st.i
 let wl=null;async function keepAwake(){try{wl=await navigator.wakeLock.request("screen");}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")keepAwake();});
 window.addEventListener("resize",()=>{syncSpeed();applySpeed();syncScrollCtl();});
-window.addEventListener("beforeunload",e=>{if(recording||saving){e.preventDefault();e.returnValue="";}});
+window.addEventListener("beforeunload",e=>{if(recording||saving||remuxing){e.preventDefault();e.returnValue="";}});
 
 /* Сворачивание групп панели. Состояние помнится по каждой группе отдельно:
    у кого-то не нужно рисование, у кого-то камера — панель должна оставаться
@@ -2158,6 +2440,7 @@ function bindStudio(){
   $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);if(!recording){releaseMic();ensureAudio();}};
   $("#recbtn").onclick=startRec;$("#pausebtn").onclick=togglePause;$("#stopbtn").onclick=stopRec;
   $("#cutbtn").onclick=markCut;$("#m_cut").onclick=markCut;
+  $("#remuxRetryBtn").onclick=retryRemuxAll;
   $("#resbtn").onclick=()=>{const i=RES_SEQ.indexOf(st.res);st.res=RES_SEQ[(i+1)%RES_SEQ.length];save("res",st.res);syncResBtn();};
   $("#burnbtn").onclick=()=>{st.burnIn=!st.burnIn;save("burnIn",st.burnIn);$("#burnbtn").classList.toggle("active",st.burnIn);};
   $("#posbtn").onclick=()=>{st.promptPos=st.promptPos==="top"?"bottom":"top";save("promptPos",st.promptPos);applyPromptBox();};
