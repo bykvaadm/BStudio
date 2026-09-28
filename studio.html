@@ -907,11 +907,11 @@ async function htmlDeckToFrames(src, say){
        «замка нет» одновременно). Внутри одного адреса студии настоящее
        взаимное исключение даёт Web Locks: вторая вкладка его не получит. */
     if(navigator.locks){
-      releaseWebLock=await new Promise(res=>{
+      releaseWebLock=await new Promise((res,rej)=>{
         navigator.locks.request("bstudio-deck-import",{ifAvailable:true},lock=>{
           if(!lock){ res(null); return; }
           return new Promise(done=>res(done));
-        });
+        }).catch(rej);
       });
       if(!releaseWebLock) throw new Error("Эта дека уже импортируется в другой вкладке. Дождись её окончания или закрой ту вкладку.");
     }
@@ -965,9 +965,13 @@ async function htmlDeckToFrames(src, say){
     throw e;
   } finally {
     cleanup();
-    if(releaseWebLock) releaseWebLock();
-    // Снимаем только свой замок: если его уже перехватил другой импорт, не трогаем.
-    if(lockDir){ try{ const t=await (await (await lockDir.getFileHandle(".import-lock")).getFile()).text(); if(+t===lockGen) await lockDir.removeEntry(".import-lock"); }catch(e){} }
+    try{
+      // Снимаем только свой замок: если его уже перехватил другой импорт, не трогаем.
+      if(lockDir){ try{ const t=await (await (await lockDir.getFileHandle(".import-lock")).getFile()).text(); if(+t===lockGen) await lockDir.removeEntry(".import-lock"); }catch(e){} }
+    } finally {
+      // Web Lock — последним: иначе следующий импорт на миг увидит ещё не снятый файловый замок.
+      if(releaseWebLock) releaseWebLock();
+    }
   }
 }
 
@@ -1043,16 +1047,11 @@ async function loadLesson(lesson, src){
   // Речитатива может не быть вовсе — тогда все слайды просто без текста.
   const slides=lesson.scriptHandle ? parseScript(await (await lesson.scriptHandle.getFile()).text()) : [];
   const byId={}; slides.forEach(s=>byId[s.id]=s);
-  // Правило строже, чем «хоть один совпал»: используем id из manifest, только
-  // если ВСЕ его непустые id нашлись в речитативе. «Хоть один» хрупко — если у
-  // деки метки вида «01 VM по расписанию» (так их в рантайме переписывает сам
-  // deck-stage, а не то, что лежит в исходной разметке статично), deckLabelId
-  // не выделит из них «N.M» и оставит их как есть; случайное совпадение первого
-  // слайда (например оба с одинаковым «титул») включило бы id-путь целиком, а
-  // остальные слайды с несовпавшими метками остались бы без текста молча. Если
-  // непустых id вовсе нет — тоже считаем, что разметка не совпадает, и отдаём
-  // текст по порядку, как для декок без manifest. render.js-деки, где все id
-  // совпадают, идут прежним id-путём без изменений.
+  // id из manifest используем, только если большинство непустых нашлось в
+  // речитативе; иначе (в том числе когда непустых id нет) — текст по порядку,
+  // как для дек без manifest. Метки HTML-деки deck-stage в рантайме переписывает
+  // в вид «01 VM по расписанию» — из них «N.M» не выделить, и такая дека честно
+  // уходит в раздачу по порядку.
   // Порог — БОЛЬШЕ ПОЛОВИНЫ совпавших id. «Все» ломало реальные деки курса:
   // в 7 из 8 есть слайды «демо», которых нет в речитативе, и раздача по
   // порядку сдвигала текст на соседние кадры (замер 2026-09-28: у 01-linux
