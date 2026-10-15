@@ -28,6 +28,17 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 /* ---- studio ---- */
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0c0f;}
 #slideImg{max-width:100%;max-height:100%;object-fit:contain;}
+/* Экран вместо слайда. Видео растянуто на всю сцену и вписано через
+   object-fit: маленькое окно тогда не остаётся почтовой маркой посреди экрана.
+   Где внутри сцены лежит сама картинка, считает slideScreenRect(). */
+#scrVid{width:100%;height:100%;object-fit:contain;display:none;background:#0b0c0f;}
+#stage.scr #slideImg{display:none;} #stage.scr #scrVid{display:block;}
+#scrhint{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:6;display:none;max-width:70vw;text-align:center;color:#9aa0a8;font-size:17px;line-height:1.5;pointer-events:none;}
+/* Трансляция экрана без деки: листать нечего, поэтому всё, что про слайды,
+   убрано целиком, а не оставлено мёртвыми кнопками «1 / 1». */
+body.screenonly .deckonly{display:none!important;}
+#setup .or{margin:18px 0 0;text-align:center;color:#6f757e;font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
+#setup .note{margin-top:8px;color:#7e838c;font-size:12.5px;line-height:1.45;}
 #camWrap{position:fixed;display:none;aspect-ratio:16/9;border-radius:14px;overflow:hidden;border:2px solid rgba(255,255,255,.85);box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:5;}
 #cam{width:100%;height:100%;object-fit:cover;display:block;}
 .camWrap.br{right:3.33%;bottom:5.19%;} .camWrap.bl{left:3.33%;bottom:5.19%;}
@@ -67,6 +78,7 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 .grp select{background:#23252e;color:#e8e9ec;border:1px solid #2a2e39;border-radius:8px;padding:6px;font-size:12px;max-width:160px;min-height:36px;cursor:pointer;}
 #cutbtn{background:#7c3a12;color:#ffcaa0;font-weight:600;}
 #minibar #m_cut{background:#7c3a12;color:#ffcaa0;}
+#scrbtn.active,#minibar #m_scr.active{background:#1f6f43;color:#d9ffe9;}
 #promptInner{position:relative;z-index:1;font-size:34px;line-height:1.5;font-weight:600;text-align:left;text-shadow:0 2px 6px rgba(0,0,0,.6);}
 #promptInner p{margin:0 0 .7em;}
 #promptInner b{color:#ffe26b;} #promptInner i{font-style:italic;color:#cfe3ff;}
@@ -184,6 +196,7 @@ input[type=range]{width:90px;}
 .vu{display:inline-block;width:48px;height:8px;border-radius:5px;background:#23252e;overflow:hidden;vertical-align:middle;}
 .vu>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2e8b45,#f5c518,#ff3b30);transition:width .05s linear;}
 #micwarn{display:none;color:#ff7a6e;font-size:12px;font-weight:700;padding:0 4px;}
+#scraudwarn{display:none;color:#ffab2e;font-size:12px;font-weight:700;padding:0 4px;cursor:help;white-space:nowrap;}
 #seekwarn{display:none;color:#9aa0a8;font-size:12px;font-weight:700;padding:0 4px;cursor:help;}
 #fmtwarn{display:none;margin:12px 0 0;padding:10px 12px;border-radius:8px;background:rgba(120,130,145,.14);border:1px solid rgba(120,130,145,.4);color:#aab2bf;font-size:13px;line-height:1.45;text-align:left;}
 #savemsg{display:none;color:#7a8290;font-size:12px;padding:0 4px;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -218,7 +231,7 @@ input[type=range]{width:90px;}
 
 <div id="setup"><div class="card">
   <h1>🎬 BStudio</h1>
-  <p class="sub">Укажи папку курса — или просто любую папку с картинками. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
+  <p class="sub">Укажи папку курса — или просто любую папку с картинками; а если слайдов нет вовсе, транслируй экран. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
   <div id="restoreBox" style="display:none"></div>
   <label>Формат записи</label>
   <div class="seg">
@@ -234,10 +247,14 @@ input[type=range]{width:90px;}
     <select id="sourceSel"></select>
     <button id="go" class="big go">▶ Поехали</button>
   </div>
+  <div class="or">или без слайдов</div>
+  <button id="goScreen" class="big" type="button">🖥 Транслировать экран</button>
+  <div class="note">Экран, окно или вкладку спросит сам Chrome. Запись ляжет в выбранную папку (в папку урока, если урок выбран); без папки — скачается по «Стоп».</div>
   <div id="setupMsg" class="msg"></div>
 </div></div>
 
-<div id="stage"><img id="slideImg" alt=""></div>
+<div id="stage"><img id="slideImg" alt=""><video id="scrVid" playsinline muted></video></div>
+<div id="scrhint">Экран не транслируется.<br>Нажми «🖥 экран» (клавиша S) — Chrome спросит, что показать.</div>
 <div id="camWrap" class="camWrap br"><video id="cam" playsinline muted></video><div id="camcross"><i class="v"></i><i class="h"></i><i class="c"></i></div></div>
 <div id="prompter"><div id="readline"></div><div id="promptInner"></div></div>
 <button id="scrollctl" title="суфлёр: пуск/пауза">▶</button>
@@ -245,13 +262,13 @@ input[type=range]{width:90px;}
 <img id="slidethumb" alt="">
 <div id="countdown"></div>
 <div id="camhint"></div>
-<div id="slideid"></div>
+<div id="slideid" class="deckonly"></div>
 <div id="advcount"></div>
 <canvas id="laserlive"></canvas>
 
 <div id="timers">
   <div class="tt"><span class="tdot" id="tdot"></span><b id="totTime">0:00</b><span class="tlab">запись</span></div>
-  <div class="tt"><span class="tdot" style="visibility:hidden"></span><b id="slTime">0:00</b><span class="tlab">слайд</span></div>
+  <div class="tt deckonly"><span class="tdot" style="visibility:hidden"></span><b id="slTime">0:00</b><span class="tlab">слайд</span></div>
 </div>
 
 <div id="bar">
@@ -323,11 +340,13 @@ input[type=range]{width:90px;}
      <span id="micwarn" title="нет звука!">⚠ нет звука</span>
      <span id="seekwarn">WebM</span>
      <select id="micsel" title="выбор микрофона"></select>
+     <button id="scraudbtn" class="b2"></button>
+     <span id="scraudwarn" title="Экран транслируется без звука: в окне выбора Chrome не отмечена галочка про звук (или у этого источника звука нет — у вкладок он есть, а у окон и целого экрана зависит от версии системы и Chrome), либо трансляция началась раньше, чем включён этот режим. Выключи «🖥 экран», включи снова и поставь галочку.">⚠ экран без звука</span>
      <span class="vdiv"></span>
      <button id="resbtn" title="размер записи">1080p</button>
      <span class="vdiv"></span>
      <button id="burnbtn" title="вшить суфлёр в видео">вшить текст</button></div>
-  <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="restartbtn" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv"></span><button id="prev">◀</button><span id="slabel">—</span><button id="next">▶</button></div>
+  <div class="grp" id="g-slide"><span class="cap">слайд</span><button id="restartbtn" class="deckonly" title="начать сначала: 1-й слайд, сброс таймеров, стоп записи">⏮ сначала</button><span class="vdiv deckonly"></span><button id="prev" class="deckonly">◀</button><span id="slabel" class="deckonly">—</span><button id="next" class="deckonly">▶</button><span class="vdiv deckonly"></span><button id="scrbtn" title="транслировать экран вместо слайда: экран, окно или вкладку спросит Chrome; повторный клик возвращает слайд (клавиша S)">🖥 экран</button></div>
   <div class="grp" id="g-more"><span class="cap">ещё</span>
      <button id="back" title="к выбору урока">☰</button>
      <span class="vdiv"></span>
@@ -343,10 +362,11 @@ input[type=range]{width:90px;}
 </div>
 
 <div id="minibar">
-  <div class="mg"><div class="mr"><button id="m_prev" title="назад">◀</button><button id="m_next" title="вперёд">▶</button></div><span class="mc">слайд</span></div>
+  <div class="mg deckonly"><div class="mr"><button id="m_prev" title="назад">◀</button><button id="m_next" title="вперёд">▶</button></div><span class="mc">слайд</span></div>
   <div class="mg" id="m-sufl"><div class="mr"><button id="m_play" title="суфлёр: пуск/пауза">▶</button></div><span class="mc">суфлёр</span></div>
   <div class="mg"><div class="mr"><button id="m_rec" title="запись">⏺</button><button id="m_pause" style="display:none" title="пауза/продолжить">⏸</button><button id="m_stop" style="display:none" title="стоп">⏹</button><button id="m_cut" title="отметка">⚑</button></div><span class="mc">запись</span></div>
   <div class="mg"><div class="mr"><button id="m_cam" title="камера">📷</button><button id="m_camfull" title="камера на весь экран"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><circle cx="12" cy="11" r="2.4"/><path d="M8 17.8c0-2.3 1.8-3.7 4-3.7s4 1.4 4 3.7"/></svg></button></div><span class="mc">камера</span></div>
+  <div class="mg"><div class="mr"><button id="m_scr" title="транслировать экран вместо слайда">🖥</button></div><span class="mc">экран</span></div>
   <div class="mg"><div class="mr"><button id="m_expand" title="показать панель">⌃</button></div><span class="mc">панель</span></div>
 </div>
 
@@ -1092,7 +1112,7 @@ async function afterCourse(handle){
   try{
     LESSONS=await scanLessons(handle);
     const ready=LESSONS.filter(l=>l.ready);
-    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF, HTML-дека Claude Design или deck_frames/ с кадрами; речитатив 03-script.md рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":""); $("#setupMsg").className="msg err"; return; }
+    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF, HTML-дека Claude Design или deck_frames/ с кадрами; речитатив 03-script.md рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":"")+" Слайды не нужны? Жми «🖥 Транслировать экран» — запись ляжет в эту папку."; $("#setupMsg").className="msg err"; $("#lessonBox").style.display="none"; return; }
     const sel=$("#lessonSel"); sel.innerHTML="";
     ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name+(l.scriptHandle?"":" — без речитатива"); sel.appendChild(o); });
     const last=LS("lastLesson",null); if(last!=null){ const idx=LESSONS.findIndex(l=>l.name===last&&l.ready); if(idx>=0) sel.value=String(idx); }
@@ -1133,14 +1153,29 @@ function updateSourceHint(){
   else{ msg.textContent=LESSONS.filter(l=>l.ready).length+" урок(ов) найдено."; msg.className="msg"; }
 }
 
+/* «Поехали» и «Транслировать экран» — два входа в одну студию, и оба долгие:
+   дека рендерится секундами, окно выбора экрана висит, пока человек думает.
+   Без общего замка догрузившаяся дека подменяла бы урок под уже идущей
+   записью экрана. Пока один запуск не кончился, второй не начинается. */
+let launching=false;
+function setLaunching(v){ launching=v; for(const id of ["#go","#goScreen","#pickCourse"]){ const b=$(id); if(b) b.disabled=v||(id==="#pickCourse"&&!window.showDirectoryPicker); } }
 async function startSelected(){
+  if(launching) return;
+  setLaunching(true);
+  try{ await startSelectedInner(); } finally { setLaunching(false); }
+}
+async function startSelectedInner(){
   const idx=+$("#lessonSel").value; const lesson=LESSONS[idx];
   const src=(lesson.sources||[])[+$("#sourceSel").value];
   if(!src||src.kind==="pptx"){ $("#setupMsg").textContent="Этот источник студия не нарисует — сконвертируйте PPTX в PDF (pptx-to-pdf.command)."; $("#setupMsg").className="msg err"; return; }
   $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":(src.kind==="html")?"Открываю HTML-деку…":"Загружаю кадры…"; $("#setupMsg").className="msg";
   try{
     const next=await loadLesson(lesson, src);
-    releaseDeck(); SLIDES=next; CURLESSON=lesson; hideFolderBtn();
+    /* Открыли урок с декой — значит, показывать собрались слайды. Экран,
+       оставшийся включённым с прошлого захода, молча лёг бы в запись вместо
+       них; понадобится — «🖥 экран» включит его обратно одним нажатием. */
+    stopScreen();
+    releaseDeck(); SLIDES=next; CURLESSON=lesson; SCREENONLY=false; hideFolderBtn();
     /* Штрихи ключуются номером слайда, поэтому при смене деки их надо снести:
        иначе рисунок со слайда 1 прошлого урока всплывёт на слайде 1 нового и
        уедет в запись. */
@@ -1168,6 +1203,39 @@ async function startSelected(){
     refreshRemuxHint();
   }catch(e){ $("#setupMsg").textContent=e.message; $("#setupMsg").className="msg err"; }
 }
+/* Трансляция экрана без деки. Слайд в студии обязан быть хотя бы один — она
+   рисует SLIDES[0] сразу, — поэтому подкладываем пустой тёмный кадр: его же
+   увидит запись, если экран выключить посреди дубля.
+   Папка для записи — урока, если он выбран, иначе выбранная папка целиком;
+   нет никакой — дубль соберётся в памяти и скачается по «Стоп», как всегда. */
+async function startScreenOnly(){
+  if(launching) return;
+  setLaunching(true);
+  try{ await startScreenOnlyInner(); } finally { setLaunching(false); }
+}
+async function startScreenOnlyInner(){
+  const msg=$("#setupMsg");
+  // Первым делом, до любого await: Chrome открывает окно выбора только по клику.
+  if(!(await startScreen())){ msg.textContent="Экран не выбран — трансляция не началась."; msg.className="msg"; return; }
+  try{
+    const c=document.createElement("canvas"); c.width=1920; c.height=1080;
+    const g=c.getContext("2d",{alpha:false}); g.fillStyle="#0b0c0f"; g.fillRect(0,0,1920,1080);
+    const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+    if(!blob) throw new Error("не вышло подготовить пустой кадр");
+    const picked=$("#lessonBox").style.display!=="none" ? LESSONS[+$("#lessonSel").value] : null;
+    const dir=(picked&&picked.dirHandle)||COURSE||null;
+    releaseDeck();
+    SLIDES=[{img:URL.createObjectURL(blob),html:"",plain:"",title:false,cam:null,id:"",words:0}];
+    DECKSIZE={w:1920,h:1080};
+    CURLESSON={name:"экран",scriptHandle:null,sources:[],dirHandle:dir}; SCREENONLY=true; hideFolderBtn();
+    inkBySlide.clear(); inkUndoBySlide.clear();
+    msg.textContent=""; msg.className="msg";
+    $("#setup").style.display="none"; $("#bar").style.display="flex";
+    startStudio();
+    refreshRemuxHint();
+    setSaveMsg(dir?"":"папка не выбрана — запись скачается",false,dir?"":"Папка не выбрана: дубль соберётся в памяти браузера и скачается по «Стоп». Для длинной записи лучше выбрать папку — «☰», затем «📁 Выбрать папку».");
+  }catch(e){ stopScreen(); msg.textContent="Трансляция экрана не запустилась: "+e.message; msg.className="msg err"; }
+}
 function bindSetup(){
   applyFmt();
   const setFmt=v=>{ st.fmt=v; save("fmt",v); applyFmt(); };
@@ -1182,6 +1250,7 @@ function bindSetup(){
     catch(e){ if(e.name!=="AbortError") $("#setupMsg").textContent="Не удалось открыть папку: "+e.message; }
   };
   $("#go").onclick=startSelected;
+  $("#goScreen").onclick=startScreenOnly;
   idbGet("course").then(async h=>{
     if(!h) return;
     const box=$("#restoreBox"); box.style.display="block";
@@ -1203,7 +1272,7 @@ let st={ i:0, playing:false, speed:7, tempo:LS("tempo",135), font:LS("font",34),
   res:LS("res","1080"), burnIn:LS("burnIn",false), promptPos:LS("promptPos","top"), opacity:LS("opacity",0.78),
   promptW:LS("promptW",0.28), promptH:LS("promptH",0.18), autoScroll:LS("autoScroll",false),
   autoAdvance:LS("autoAdvance",false), camDeviceId:LS("camDeviceId",""), micDeviceId:LS("micDeviceId",""), thumbOpacity:LS("thumbOpacity",0.3), camZoom:LS("camZoom",1), camPanX:LS("camPanX",0), camPanY:LS("camPanY",0), camShape:LS("camShape","rect"),
-  camHide:false, fmt:LS("fmt","mp4"),
+  camHide:false, fmt:LS("fmt","mp4"), scrAudio:LS("scrAudio","off"),
   inkPersist:LS("inkPersist",false), inkColor:LS("inkColor","#ff4d4d"), inkWidth:LS("inkWidth",4) };
 let curImg=new Image();
 const CAMPOS={tl:["l","t"],tc:["c","t"],tr:["r","t"],mr:["r","m"],br:["r","b"],bc:["c","b"],bl:["l","b"],ml:["l","m"]};
@@ -1282,7 +1351,7 @@ const DEFAULTS={tempo:135,font:34,corner:"br",camSize:0.25,mirror:true,res:"1080
 const SET_KEYS=Object.keys(DEFAULTS);
 function applyAllControls(){applyFont();applySpeed();applyCam();applyPromptBox();$("#camsz").value=st.camSize;$("#opac").value=st.opacity;syncResBtn();$("#burnbtn").classList.toggle("active",st.burnIn);const ab=$("#autobtn");if(ab)ab.classList.toggle("active",st.autoScroll);const aa=$("#autoadvbtn");if(aa)aa.classList.toggle("active",st.autoAdvance);const to=$("#thumbop");if(to)to.value=st.thumbOpacity;const cz=$("#camzoom");if(cz)cz.value=st.camZoom;const cpx=$("#campanx");if(cpx)cpx.value=st.camPanX;const cpy=$("#campany");if(cpy)cpy.value=st.camPanY;
   const iw=$("#inkw");if(iw)iw.value=st.inkWidth;
-  inkSyncPersistBtn();
+  inkSyncPersistBtn(); syncScrAudio();
   document.querySelectorAll("#inkcolors button").forEach(b=>b.classList.toggle("swon",b.dataset.color===st.inkColor));
 }
 function flashBtn(b){if(!b)return;b.classList.add("ok");setTimeout(()=>b.classList.remove("ok"),700);}
@@ -1430,22 +1499,227 @@ function drawCamInto(ctx,x,y,w,h,rad,border,circle){
   if(border>0){ctx.save();pathFn();ctx.lineWidth=border;ctx.strokeStyle="rgba(255,255,255,.9)";ctx.stroke();ctx.restore();}
 }
 let laserOn=false, laserPts=[], laserHead=null, lastNorm=null, laserLastPush=0, laserMoveT=0; const LASER_MS=650, LASER_IDLE=3000, LASER_FADE=400;
-function slideNorm(cx,cy){const el=$("#slideImg");if(!el||!curImg||!curImg.naturalWidth)return{inside:false};const b=el.getBoundingClientRect();if(!b.width||!b.height)return{inside:false};const ia=curImg.naturalWidth/curImg.naturalHeight,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}const nx=(cx-b.left-ox)/dw,ny=(cy-b.top-oy)/dh;return{nx,ny,inside:nx>=0&&nx<=1&&ny>=0&&ny<=1};}
-function slideScreenRect(){const el=$("#slideImg");if(!el||!curImg||!curImg.naturalWidth)return null;const b=el.getBoundingClientRect();if(!b.width||!b.height)return null;const ia=curImg.naturalWidth/curImg.naturalHeight,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}return{x:b.left+ox,y:b.top+oy,w:dw,h:dh};}
+/* ---------- трансляция экрана ----------
+   Экран — второй источник картинки сцены наравне со слайдом. Пока он включён,
+   всё, что рисовало слайд (кадр записи, превью, лазер, рисование), берёт
+   вместо него живое видео. Отдельного «режима» нет: кнопка подменяет слайд в
+   любой момент, в том числе посреди записи, — показал демо и вернулся к деке.
+   Звук экрана — отдельная настройка, см. «звук экрана» ниже. */
+const scrVid=$("#scrVid");
+let scrStream=null, scrPending=false, scrGen=0, SCREENONLY=false;
+function scrLive(){return !!scrStream&&scrVid.videoWidth>0&&scrVid.videoHeight>0;}
+// Что сейчас на сцене: экран, если он идёт, иначе слайд. el годится в drawImage.
+function srcDims(){
+  if(scrLive()) return {el:scrVid,w:scrVid.videoWidth,h:scrVid.videoHeight};
+  if(curImg&&curImg.complete&&curImg.naturalWidth) return {el:curImg,w:curImg.naturalWidth,h:curImg.naturalHeight};
+  return null;
+}
+function slideScreenRect(){const d=srcDims();if(!d)return null;const el=d.el===scrVid?scrVid:$("#slideImg");if(!el)return null;const b=el.getBoundingClientRect();if(!b.width||!b.height)return null;const ia=d.w/d.h,ea=b.width/b.height;let dw,dh,ox,oy;if(ia>ea){dw=b.width;dh=b.width/ia;ox=0;oy=(b.height-dh)/2;}else{dh=b.height;dw=b.height*ia;oy=0;ox=(b.width-dw)/2;}return{x:b.left+ox,y:b.top+oy,w:dw,h:dh};}
+function slideNorm(cx,cy){const r=slideScreenRect();if(!r)return{inside:false};const nx=(cx-r.x)/r.w,ny=(cy-r.y)/r.h;return{nx,ny,inside:nx>=0&&nx<=1&&ny>=0&&ny<=1};}
+/* Штрихи ключуются номером слайда, а у экрана номера нет — у него свой ключ,
+   чтобы нарисованное на слайде не всплыло поверх терминала, и наоборот. */
+function inkKey(){return scrStream?"screen":st.i;}
+function applyScreen(){
+  const on=!!scrStream;
+  $("#stage").classList.toggle("scr",on);
+  for(const id of ["#scrbtn","#m_scr"]){const b=$(id);if(b)b.classList.toggle("active",on);}
+  const h=$("#scrhint");if(h)h.style.display=(SCREENONLY&&!on&&$("#setup").style.display==="none")?"block":"none";
+  syncResBtn();
+}
+function screenError(e){
+  const n=(e&&e.name)||"Error";
+  // Отмена в окне Chrome — тоже NotAllowedError, но это не ошибка, а «передумал».
+  if(n==="AbortError") return "";
+  if(n==="NotAllowedError") return /system/i.test((e&&e.message)||"")
+    ? "Система не даёт Chrome снимать экран. На macOS: Системные настройки — Конфиденциальность и безопасность — Запись экрана и системного звука, включи Chrome и перезапусти его."
+    : "";
+  if(n==="NotFoundError") return "Chrome не нашёл, что транслировать: ни экрана, ни окна.";
+  if(n==="NotReadableError") return "Экран не отдаётся: система или другая программа держит захват. Попробуй ещё раз.";
+  return "Трансляция экрана не запустилась ["+n+"]: "+((e&&e.message)||"неизвестная ошибка");
+}
+/* Возвращает true, если экран идёт. Звать прямо из обработчика клика, без
+   await перед этим: окно выбора Chrome открывает только по свежему нажатию. */
+async function startScreen(){
+  if(scrStream) return true;
+  if(scrPending) return false;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){ alert("Этот браузер не умеет транслировать экран — нужен Chrome или Edge."); return false; }
+  scrPending=true;
+  /* Номер запроса. Окно выбора Chrome может висеть сколько угодно, и за это
+     время экран успевают «выключить» — выйти через «☰», открыть урок. Любой
+     stopScreen() номер сдвигает, и запоздавший ответ тогда не включает экран
+     задним числом, а сразу отпускает полученный захват. */
+  const gen=++scrGen;
+  try{
+    /* selfBrowserSurface:exclude — саму студию из списка вкладок убираем: её
+       трансляция даёт зеркальный коридор и ничего больше. surfaceSwitching —
+       кнопка Chrome «показать другую вкладку» прямо на лету, без остановки. */
+    /* Звук просим, только если его собрались писать: тогда в окне выбора
+       появляется галочка «предоставить доступ к аудио». Обработку (эхо, шум,
+       усиление) выключаем — это не голос, а готовый звук программы. */
+    const wantAudio=scrAudioMode()!=="off";
+    const opts={video:{frameRate:{ideal:30}},audio:wantAudio?{echoCancellation:false,noiseSuppression:false,autoGainControl:false}:false,selfBrowserSurface:"exclude",surfaceSwitching:"include",monitorTypeSurfaces:"include"};
+    if(wantAudio) opts.systemAudio="include";
+    let ctl=null; try{ if(window.CaptureController){ ctl=new CaptureController(); opts.controller=ctl; } }catch(e){ ctl=null; }
+    let s;
+    try{ s=await navigator.mediaDevices.getDisplayMedia(opts); }
+    catch(e){ const t=screenError(e); if(t) alert(t); return false; }
+    const tr=s.getVideoTracks()[0];
+    /* По умолчанию Chrome сразу уводит в выбранное окно или вкладку. Нам надо
+       остаться в студии: отсюда жмут «Запись», а уйти в окно с демо человек
+       успеет сам. Решить это можно только в ту же микрозадачу, где пришёл
+       поток, и только для окна и вкладки — у целого экрана фокуса нет. */
+    try{ if(ctl&&ctl.setFocusBehavior&&tr){ const k=tr.getSettings().displaySurface; if(k==="browser"||k==="window") ctl.setFocusBehavior("no-focus-change"); } }catch(e){}
+    if(!tr||gen!==scrGen){ s.getTracks().forEach(t=>{try{t.stop();}catch(e){}}); return false; }
+    scrStream=s; scrVid.srcObject=s;
+    // «Закрыть доступ» в плашке Chrome или закрытое окно — трек кончается сам.
+    tr.addEventListener("ended",()=>{ if(scrStream===s) stopScreen(); });
+    /* Звук живёт своей жизнью: его трек может кончиться раньше картинки, а
+       Chrome при «показать другую вкладку» — подменить треки в том же потоке.
+       В обоих случаях переподключаем граф записи и обновляем предупреждение. */
+    const reAudio=()=>{ if(scrStream===s){ attachScrAudio(); syncScrAudio(); } };
+    s.getAudioTracks().forEach(t=>t.addEventListener("ended",reAudio));
+    s.addEventListener("addtrack",ev=>{ if(ev.track&&ev.track.kind==="audio") ev.track.addEventListener("ended",reAudio); reAudio(); });
+    s.addEventListener("removetrack",reAudio);
+    /* Метка — до ожидания видео: выключи экран, пока оно запускается, и в
+       markers.txt осталось бы «экран выключен» без парного «включён».
+       На паузе метку ставим тоже, в отличие от смены слайда: таймкод на паузе
+       стоит, так что она ляжет ровно на склейку, — а без неё переключение,
+       сделанное на паузе, пропало бы и пара «включён/выключен» развалилась. */
+    if(recording) addMarker("screen");
+    attachScrAudio(); syncScrAudio();
+    try{ await scrVid.play(); }catch(e){}
+    if(scrStream!==s) return false;            // успели выключить, пока видео запускалось
+    applyScreen();
+    return true;
+  } finally { scrPending=false; }
+}
+function stopScreen(){
+  scrGen++;                                   // отменяет и запрос, который ещё ждёт выбора в окне Chrome
+  if(!scrStream) return;
+  const s=scrStream; scrStream=null;
+  s.getTracks().forEach(t=>{try{t.stop();}catch(e){}});
+  try{scrVid.srcObject=null;}catch(e){}
+  detachScrAudio(); syncScrAudio();
+  if(!st.inkPersist) inkClearSlide("screen");
+  if(recording) addMarker("screenoff");
+  applyScreen();
+}
+function toggleScreen(){ if(scrStream) stopScreen(); else startScreen(); }
+
+/* ---------- звук экрана ----------
+   Три режима, кнопка «звук экрана» в группе «запись»:
+     off   — не писать (как было: в файле только микрофон, напрямую);
+     mix   — вместе с микрофоном, одной обычной дорожкой;
+     split — раздельно: левый канал микрофон, правый экран. Для монтажа: в
+             редакторе стерео разводится на две моно-дорожки, и голос правится
+             отдельно от звука демо. Слушать такой файл «как есть» неудобно —
+             голос в одном ухе, — это именно исходник под монтаж.
+   Две настоящие звуковые дорожки MediaRecorder в Chrome не пишет (берёт
+   первую), поэтому раздельность — каналами одной дорожки.
+   В режимах mix и split звук идёт в запись через Web Audio (микрофон и экран
+   сводятся в один поток); в off микрофон по-прежнему отдаётся в MediaRecorder
+   напрямую, и этот путь правкой не затронут. Граф собирается на «Запись» и
+   живёт один дубль; экран можно включать и выключать посреди дубля — его звук
+   подцепляется и отцепляется на ходу. Сам режим на время записи заперт:
+   дорожки MediaRecorder на ходу не меняются. По той же причине режима нет в
+   пресете (💾/↺): «↺» посреди дубля поменял бы его в обход замка — панель
+   показывала бы одно, а писалось другое. */
+const SCRAUD_SEQ=["off","mix","split"];
+const SCRAUD_LAB={off:"не писать",mix:"вместе с микрофоном",split:"Л микрофон · П экран"};
+function scrAudioMode(){return SCRAUD_SEQ.indexOf(st.scrAudio)>=0?st.scrAudio:"off";}
+// Первый ЖИВОЙ звуковой трек: кончившийся может остаться в потоке впереди пришедшей ему замены.
+function scrAudioTrack(){return (scrStream&&scrStream.getAudioTracks().find(t=>t.readyState==="live"))||null;}
+function syncScrAudio(){
+  const m=scrAudioMode(), b=$("#scraudbtn");
+  if(b){
+    b.innerHTML='<i>звук экрана</i><b>'+SCRAUD_LAB[m]+'</b>';
+    b.classList.toggle("active",m!=="off");
+    b.disabled=recording||starting;
+    b.title="Писать ли звук транслируемого экрана (жми, чтобы переключить; во время записи не меняется). "+
+      (m==="off"?"Сейчас: не писать — в записи только микрофон."
+      :m==="mix"?"Сейчас: вместе с микрофоном, одной дорожкой."
+      :"Сейчас: раздельно — левый канал микрофон, правый экран; в монтажке стерео разводится на две моно-дорожки.")+
+      " Chrome спросит про звук в окне выбора экрана — поставь там галочку. Работай в наушниках, иначе звук экрана попадёт и в микрофон.";
+  }
+  /* Два разных «звука экрана нет»: его не дал сам экран (нет галочки, нет
+     трека) — или трек есть, но подключить его к идущей записи не вышло. */
+  const w=$("#scraudwarn");
+  if(w){
+    const noTrack=m!=="off"&&!!scrStream&&!scrAudioTrack(), noLink=m!=="off"&&!!scrStream&&!noTrack&&!!recAudio&&!recAudio.scrSrc;
+    if(!w.dataset.t0) w.dataset.t0=w.title;
+    w.textContent=noLink?"⚠ звук экрана не пишется":"⚠ экран без звука";
+    w.title=noLink?"Звук у экрана есть, но подключить его к идущей записи не вышло — в этом дубле его не будет. Выключи «🖥 экран» и включи снова; не поможет — останови дубль и начни заново.":w.dataset.t0;
+    w.style.display=(noTrack||noLink)?"inline":"none";
+  }
+}
+let recAudio=null;
+// Вход, сводящий источник в моно: в канал стерео должен попасть весь звук, а не половина.
+function monoIn(ctx){const g=ctx.createGain();g.channelCount=1;g.channelCountMode="explicit";g.channelInterpretation="speakers";return g;}
+function teardownRecAudio(A){
+  if(!A) return;
+  for(const n of A.nodes.concat(A.scrSrc?[A.scrSrc]:[])){try{n.disconnect();}catch(e){}}
+  A.scrSrc=null;
+  try{A.dest.stream.getTracks().forEach(t=>t.stop());}catch(e){}
+  if(recAudio===A) recAudio=null;
+}
+function detachScrAudio(){const A=recAudio;if(!A||!A.scrSrc)return;try{A.scrSrc.disconnect();}catch(e){}A.scrSrc=null;}
+function attachScrAudio(){
+  const A=recAudio; if(!A) return;
+  detachScrAudio();
+  const t=scrAudioTrack(); if(!t) return;
+  let src=null;
+  try{ src=audioCtx.createMediaStreamSource(new MediaStream([t])); src.connect(A.scrIn); A.scrSrc=src; }
+  catch(e){ if(src){try{src.disconnect();}catch(e2){}} A.scrSrc=null; }   // что не подключилось, покажет syncScrAudio
+}
+/* Собирает граф дубля и возвращает дорожку для MediaRecorder (или null — тогда
+   пишем как без звука экрана). Микрофона может не быть: экран запишется и так. */
+async function buildRecAudio(micTrk){
+  teardownRecAudio(recAudio);
+  let built=null;                 // для уборки, если сборка упадёт на полпути
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    try{ await audioCtx.resume(); }catch(e){}
+    if(audioCtx.state!=="running") return null;      // контекст не пошёл — в записи была бы тишина
+    const ctx=audioCtx, dest=ctx.createMediaStreamDestination();
+    const A={dest,nodes:[],micIn:null,scrIn:null,scrSrc:null,split:scrAudioMode()==="split"};
+    built=A;
+    // Узел записываем в список в момент создания, до connect: упади сборка на
+    // следующем шаге — teardown найдёт и отключит всё, что уже успело появиться.
+    const mk=n=>{A.nodes.push(n);return n;};
+    if(A.split){
+      const mg=mk(ctx.createChannelMerger(2)); mg.connect(dest);
+      A.micIn=mk(monoIn(ctx)); A.scrIn=mk(monoIn(ctx));
+      A.micIn.connect(mg,0,0); A.scrIn.connect(mg,0,1);
+    }else{
+      /* Голос и громкий звук демо в сумме легко выходят за 0 дБ и хрипят.
+         Перед выходом — ограничитель: тихое не трогает, пики прижимает. */
+      const lim=mk(ctx.createDynamicsCompressor());
+      lim.threshold.value=-3; lim.knee.value=0; lim.ratio.value=20; lim.attack.value=0.003; lim.release.value=0.25;
+      lim.connect(dest);
+      A.micIn=mk(ctx.createGain()); A.scrIn=mk(ctx.createGain());
+      A.micIn.connect(lim); A.scrIn.connect(lim);
+    }
+    if(micTrk){ const s=mk(ctx.createMediaStreamSource(new MediaStream([micTrk]))); s.connect(A.micIn); }
+    const out=dest.stream.getAudioTracks()[0]||null;
+    if(!out){ teardownRecAudio(A); return null; }
+    recAudio=A; attachScrAudio(); syncScrAudio();
+    return out;
+  }catch(e){ teardownRecAudio(built); recAudio=null; return null; }
+}
 function setLaser(on){laserOn=on;const b=$("#laserbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("laser",on);laserPts.length=0;laserHead=(on&&lastNorm&&lastNorm.inside)?{nx:lastNorm.nx,ny:lastNorm.ny}:null;laserMoveT=performance.now();}
 function toggleLaser(){setLaser(!laserOn);}
 function paintLaser(g,map,px){const now=performance.now();while(laserPts.length&&now-laserPts[0].t>LASER_MS)laserPts.shift();g.save();g.lineCap="round";g.lineJoin="round";for(let i=1;i<laserPts.length;i++){const p0=map(laserPts[i-1]),pc=laserPts[i],p1=map(pc),a=Math.max(0,1-(now-pc.t)/LASER_MS);if(a<=0)continue;g.strokeStyle="rgba(255,45,45,"+(a*0.5).toFixed(3)+")";g.lineWidth=Math.max(1.5,6*a)*px;g.beginPath();g.moveTo(p0.x,p0.y);g.lineTo(p1.x,p1.y);g.stroke();}const idle=now-laserMoveT,ha=idle>=LASER_IDLE?0:(idle>LASER_IDLE-LASER_FADE?(LASER_IDLE-idle)/LASER_FADE:1);if(laserHead&&ha>0){g.globalAlpha=ha;const h=map(laserHead),R=6.5*px,gr=g.createRadialGradient(h.x,h.y,0,h.x,h.y,R*2);gr.addColorStop(0,"rgba(255,120,120,.95)");gr.addColorStop(.35,"rgba(255,30,30,.92)");gr.addColorStop(1,"rgba(255,0,0,0)");g.fillStyle=gr;g.beginPath();g.arc(h.x,h.y,R*2,0,6.2832);g.fill();g.fillStyle="rgba(255,235,235,.95)";g.beginPath();g.arc(h.x,h.y,R*0.45,0,6.2832);g.fill();}g.restore();}
-function drawLaser(ctx,cw,ch){if(!curImg||!curImg.naturalWidth)return;const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);paintLaser(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
-function drawLaserLive(){const c=$("#laserlive");if(!c)return;const hasInk=(inkBySlide.get(st.i)||[]).length>0;if(!laserOn&&!hasInk){const g=c.getContext("2d");if(g)g.clearRect(0,0,c.width,c.height);return;}const dpr=window.devicePixelRatio||1,W=window.innerWidth,H=window.innerHeight;if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);c.style.width=W+"px";c.style.height=H+"px";}const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);const rect=slideScreenRect();if(!rect)return;const px=Math.max(0.9,rect.w/1920);paintInk(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),px);if(laserOn)paintLaser(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),px);}
+function drawLaser(ctx,cw,ch){const d=srcDims();if(!d)return;const r=fitRect(d.w,d.h,cw,ch);paintLaser(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
+function drawLaserLive(){const c=$("#laserlive");if(!c)return;const hasInk=(inkBySlide.get(inkKey())||[]).length>0;if(!laserOn&&!hasInk){const g=c.getContext("2d");if(g)g.clearRect(0,0,c.width,c.height);return;}const dpr=window.devicePixelRatio||1,W=window.innerWidth,H=window.innerHeight;if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);c.style.width=W+"px";c.style.height=H+"px";}const g=c.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);const rect=slideScreenRect();if(!rect)return;const px=Math.max(0.9,rect.w/1920);paintInk(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),px);if(laserOn)paintLaser(g,p=>({x:rect.x+p.nx*rect.w,y:rect.y+p.ny*rect.h}),px);}
 
 /* ---------- рисование поверх слайда (ink) — как лазер, но штрихи персистентны ---------- */
 const INK_COLORS=["#ff4d4d","#ffd23f","#37d27a","#4d9bff","#ffffff"];
 let inkOn=false, inkTool="pen", inkBySlide=new Map(), inkUndoBySlide=new Map(), inkDown=false, inkCurStroke=null, inkLineStart=null;
 function inkStrokesFor(i){if(!inkBySlide.has(i))inkBySlide.set(i,[]);return inkBySlide.get(i);}
 function inkUndoFor(i){if(!inkUndoBySlide.has(i))inkUndoBySlide.set(i,[]);return inkUndoBySlide.get(i);}
-function inkSnapshot(){const u=inkUndoFor(st.i);u.push(inkStrokesFor(st.i).map(s=>({...s,pts:s.pts.map(p=>({...p}))})));if(u.length>30)u.shift();}
-function inkUndo(){const u=inkUndoFor(st.i);if(!u.length)return;inkBySlide.set(st.i,u.pop());}
-function inkClear(){if(!inkStrokesFor(st.i).length)return;inkSnapshot();inkBySlide.set(st.i,[]);}
+function inkSnapshot(){const u=inkUndoFor(inkKey());u.push(inkStrokesFor(inkKey()).map(s=>({...s,pts:s.pts.map(p=>({...p}))})));if(u.length>30)u.shift();}
+function inkUndo(){const u=inkUndoFor(inkKey());if(!u.length)return;inkBySlide.set(inkKey(),u.pop());}
+function inkClear(){if(!inkStrokesFor(inkKey()).length)return;inkSnapshot();inkBySlide.set(inkKey(),[]);}
 function inkClearSlide(i){inkBySlide.delete(i);inkUndoBySlide.delete(i);}
 function setInkOn(on){inkOn=on;const b=$("#inkbtn");if(b)b.classList.toggle("active",on);const sg=$("#stage");if(sg)sg.classList.toggle("ink",on);}
 function toggleInk(){setInkOn(!inkOn);}
@@ -1457,20 +1731,42 @@ function inkSyncPersistBtn(){const b=$("#inkpersistbtn");if(!b)return;
   b.title="что делать со штрихами при переходе на другой слайд";}
 function ptSegDist(p,a,b){const dx=b.nx-a.nx,dy=b.ny-a.ny,l2=dx*dx+dy*dy;let t=l2?((p.nx-a.nx)*dx+(p.ny-a.ny)*dy)/l2:0;t=Math.max(0,Math.min(1,t));const cx=a.nx+t*dx,cy=a.ny+t*dy;return Math.hypot(p.nx-cx,p.ny-cy);}
 function inkStrokeHit(s,n){const TH=0.02;if(s.pts.length===1)return Math.hypot(n.nx-s.pts[0].nx,n.ny-s.pts[0].ny)<TH;for(let i=1;i<s.pts.length;i++)if(ptSegDist(n,s.pts[i-1],s.pts[i])<TH)return true;return false;}
-function inkEraseAt(n){const arr=inkStrokesFor(st.i);for(let i=arr.length-1;i>=0;i--){if(inkStrokeHit(arr[i],n)){inkSnapshot();arr.splice(i,1);return;}}}
-function inkPointerDown(e){if(!inkOn)return;const n=slideNorm(e.clientX,e.clientY);if(!n.inside)return;e.preventDefault();inkDown=true;if(inkTool==="eraser"){inkEraseAt(n);}else{inkSnapshot();if(inkTool==="line"){inkLineStart=n;inkCurStroke={tool:"line",color:st.inkColor,width:st.inkWidth,pts:[n,n]};}else{inkCurStroke={tool:inkTool,color:st.inkColor,width:st.inkWidth,pts:[n]};}inkStrokesFor(st.i).push(inkCurStroke);}try{$("#stage").setPointerCapture(e.pointerId);}catch(err){}}
+function inkEraseAt(n){const arr=inkStrokesFor(inkKey());for(let i=arr.length-1;i>=0;i--){if(inkStrokeHit(arr[i],n)){inkSnapshot();arr.splice(i,1);return;}}}
+function inkPointerDown(e){if(!inkOn)return;const n=slideNorm(e.clientX,e.clientY);if(!n.inside)return;e.preventDefault();inkDown=true;if(inkTool==="eraser"){inkEraseAt(n);}else{inkSnapshot();if(inkTool==="line"){inkLineStart=n;inkCurStroke={tool:"line",color:st.inkColor,width:st.inkWidth,pts:[n,n]};}else{inkCurStroke={tool:inkTool,color:st.inkColor,width:st.inkWidth,pts:[n]};}inkStrokesFor(inkKey()).push(inkCurStroke);}try{$("#stage").setPointerCapture(e.pointerId);}catch(err){}}
 function inkPointerMove(e){if(!inkOn||!inkDown)return;const n=slideNorm(e.clientX,e.clientY);if(inkTool==="eraser"){inkEraseAt(n);return;}if(!inkCurStroke)return;if(inkTool==="line"){let p2=n;if(e.shiftKey&&inkLineStart){const dx=n.nx-inkLineStart.nx,dy=n.ny-inkLineStart.ny,ang=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*(Math.PI/4),len=Math.hypot(dx,dy);p2={nx:inkLineStart.nx+Math.cos(ang)*len,ny:inkLineStart.ny+Math.sin(ang)*len};}inkCurStroke.pts=[inkLineStart,p2];}else{inkCurStroke.pts.push(n);}}
 function inkPointerUp(){inkDown=false;inkCurStroke=null;inkLineStart=null;}
 function drawArrowHead(g,p0,p1,lw){const ang=Math.atan2(p1.y-p0.y,p1.x-p0.x),len=Math.max(9,lw*2.2);g.beginPath();g.moveTo(p1.x,p1.y);g.lineTo(p1.x-len*Math.cos(ang-0.45),p1.y-len*Math.sin(ang-0.45));g.moveTo(p1.x,p1.y);g.lineTo(p1.x-len*Math.cos(ang+0.45),p1.y-len*Math.sin(ang+0.45));g.stroke();}
-function paintInk(g,map,px){const arr=inkBySlide.get(st.i);if(!arr||!arr.length)return;g.save();g.lineCap="round";g.lineJoin="round";for(const s of arr){const marker=s.tool==="marker";g.strokeStyle=s.color;g.globalAlpha=marker?0.35:1;g.lineWidth=Math.max(1,marker?s.width*2.6:s.width)*px;const pts=s.pts;if(!pts.length)continue;g.beginPath();if(pts.length===1){const p=map(pts[0]);g.moveTo(p.x,p.y);g.lineTo(p.x+0.01,p.y);g.stroke();continue;}for(let i=0;i<pts.length;i++){const p=map(pts[i]);if(i===0)g.moveTo(p.x,p.y);else g.lineTo(p.x,p.y);}g.stroke();if(s.tool==="line")drawArrowHead(g,map(pts[0]),map(pts[pts.length-1]),g.lineWidth);}g.restore();}
-function drawInk(ctx,cw,ch){if(!curImg||!curImg.naturalWidth)return;const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);paintInk(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
+function paintInk(g,map,px){const arr=inkBySlide.get(inkKey());if(!arr||!arr.length)return;g.save();g.lineCap="round";g.lineJoin="round";for(const s of arr){const marker=s.tool==="marker";g.strokeStyle=s.color;g.globalAlpha=marker?0.35:1;g.lineWidth=Math.max(1,marker?s.width*2.6:s.width)*px;const pts=s.pts;if(!pts.length)continue;g.beginPath();if(pts.length===1){const p=map(pts[0]);g.moveTo(p.x,p.y);g.lineTo(p.x+0.01,p.y);g.stroke();continue;}for(let i=0;i<pts.length;i++){const p=map(pts[i]);if(i===0)g.moveTo(p.x,p.y);else g.lineTo(p.x,p.y);}g.stroke();if(s.tool==="line")drawArrowHead(g,map(pts[0]),map(pts[pts.length-1]),g.lineWidth);}g.restore();}
+function drawInk(ctx,cw,ch){const d=srcDims();if(!d)return;const r=fitRect(d.w,d.h,cw,ch);paintInk(ctx,p=>({x:r.x+p.nx*r.w,y:r.y+p.ny*r.h}),cw/1920);}
+/* Кадр записи рисует requestAnimationFrame — а он останавливается, как только
+   вкладка студии ушла с глаз: открыли другую вкладку, развернули поверх окно с
+   демо. При трансляции экрана это штатная ситуация, и запись в ней замирала бы
+   на последнем кадре. Таймер в воркере фоновой вкладкой не душится, поэтому он
+   и подхватывает: тик раз в 33 мс, и если rAF к этому моменту не рисовал
+   дольше 24 мс — рисуем сами, то есть те же 30 кадров/с. Порог обязан быть
+   меньше периода тика: с порогом в 50 мс тикер пропускал каждый второй тик и
+   давал 15 кадров/с. Пока вкладка видна, rAF на 60 Гц (пауза до 17 мс)
+   успевает раньше, и тик ничего не делает; на дисплее 30 Гц тик иногда
+   нарисует кадр лишний раз — это лишняя работа, а не лишние кадры в записи. */
+let bgTick=null, lastDrawT=0;
+function ensureBgTick(){
+  if(bgTick) return;
+  try{
+    const u=URL.createObjectURL(new Blob(["setInterval(function(){postMessage(0)},33)"],{type:"text/javascript"}));
+    bgTick=new Worker(u);
+    URL.revokeObjectURL(u);        // воркер скрипт уже забрал, адрес больше не нужен
+    bgTick.onmessage=()=>{ if(drawing && performance.now()-lastDrawT>24) drawFrame(); };
+  }catch(e){ bgTick=null; }
+}
 function drawFrame(){
+  lastDrawT=performance.now();
   const cw=canvas.width,ch=canvas.height,ctx=canvas.getContext("2d");
   ctx.fillStyle="#0b0c0f";ctx.fillRect(0,0,cw,ch);
   if(st.camFull&&st.camOn&&!st.camHide&&cam.videoWidth){
     drawCamInto(ctx,0,0,cw,ch,0,0);
   } else {
-    if(curImg&&curImg.complete&&curImg.naturalWidth){const r=fitRect(curImg.naturalWidth,curImg.naturalHeight,cw,ch);ctx.drawImage(curImg,r.x,r.y,r.w,r.h);}
+    const d=srcDims();
+    if(d){const r=fitRect(d.w,d.h,cw,ch);ctx.drawImage(d.el,r.x,r.y,r.w,r.h);}
     if(st.camOn&&!st.camHide&&cam.videoWidth){
       const circle=st.camShape==="circle", pw=cw*st.camSize, ph=circle?pw:pw*9/16, mx=cw*0.03333, my=ch*0.05185;
       const _p=CAMPOS[st.corner]||CAMPOS.br; let x=_p[0]==="r"?cw-pw-mx:_p[0]==="c"?(cw-pw)/2:mx, y=_p[1]==="b"?ch-ph-my:_p[1]==="m"?(ch-ph)/2:my, rad=cw*0.00833;
@@ -1478,7 +1774,7 @@ function drawFrame(){
     }
   }
   if(st.burnIn) drawBurnIn(ctx,cw,ch);
-  if(!st.camFull && (inkBySlide.get(st.i)||[]).length) drawInk(ctx,cw,ch);
+  if(!st.camFull && (inkBySlide.get(inkKey())||[]).length) drawInk(ctx,cw,ch);
   if(laserOn && !st.camFull) drawLaser(ctx,cw,ch);
   if(SYNC.on&&recording) drawSyncMark(ctx,cw);
 }
@@ -1817,14 +2113,15 @@ const RES_SEQ=["1080","720","deck"];
 function recSize(){
   if(st.res==="720")  return [1280,720];
   if(st.res!=="deck") return [1920,1080];
-  let {w,h}=DECKSIZE; if(!w||!h) return [1920,1080];
+  // Идёт экран — «по слайдам» значит «по экрану»: кадр ровно в его размер.
+  let {w,h}=scrLive()?{w:scrVid.videoWidth,h:scrVid.videoHeight}:DECKSIZE; if(!w||!h) return [1920,1080];
   const k=Math.min(1,3840/w,2160/h); w=Math.round(w*k); h=Math.round(h*k);
   return [Math.max(2,w-(w%2)), Math.max(2,h-(h%2))];
 }
 function resLabel(){ if(st.res==="deck"){const [w,h]=recSize();return w+"×"+h;} return st.res+"p"; }
 function syncResBtn(){const b=$("#resbtn");if(!b)return;b.textContent=resLabel();
   b.classList.toggle("active",st.res==="deck");
-  b.title=st.res==="deck"?"размер записи: по самой большой картинке слайдов — без чёрных полей":"размер записи (жми, чтобы переключить; «по слайдам» = размер самих картинок)";}
+  b.title=st.res==="deck"?"размер записи: по самой большой картинке слайдов (а когда идёт экран — по его размеру) — без чёрных полей":"размер записи (жми, чтобы переключить; «по слайдам» = размер самих картинок)";}
 
 function runCountdown(n){return new Promise(res=>{const el=$("#countdown");if(!el){res();return;}let k=n;el.style.display="flex";el.textContent=k;const tick=()=>{k--;if(k<=0){el.style.display="none";res();}else{el.textContent=k;setTimeout(tick,1000);}};setTimeout(tick,1000);});}
 /* Один дубль — один объект. Имя, папка, writer, маркеры и буфер живут в нём, а
@@ -2086,14 +2383,21 @@ async function openTakeFolder(){
 }
 async function startRec(){
   if(recording||starting||saving||remuxing)return; starting=true;
+  let recA=null, scrAudioLost=false;
+  syncScrAudio();          // кнопка режима гаснет уже на отсчёте, а не только с первой секунды записи
   hideFolderBtn();
   updateRemuxRetryUI();   // прячет кнопку повтора сразу, не дожидаясь updateRecUI ниже
   try{
     const aTrack=await ensureAudio();
     const [cw,ch]=recSize();
-    canvas.width=cw;canvas.height=ch;drawing=true;drawFrame();
+    canvas.width=cw;canvas.height=ch;drawing=true;drawFrame();ensureBgTick();
     const tracks=canvas.captureStream(30).getVideoTracks();
-    const hasAudio=aTrack&&aTrack.readyState==="live"; if(hasAudio)tracks.push(aTrack);
+    const micOk=!!(aTrack&&aTrack.readyState==="live");
+    /* Звук экрана включён — в запись идёт сведённая дорожка (см. «звук
+       экрана» выше); выключен или свести не вышло — микрофон напрямую. */
+    let recATrack=micOk?aTrack:null;
+    if(scrAudioMode()!=="off"){ const t=await buildRecAudio(micOk?aTrack:null); if(t){ recATrack=t; recA=recAudio; } else scrAudioLost=true; }
+    const hasAudio=!!recATrack; if(hasAudio)tracks.push(recATrack);
     const mime=pickMime(), opts=mime?{mimeType:mime,videoBitsPerSecond:6000000,audioBitsPerSecond:128000}:{};
     const S=newRecSession("lecture-"+recStamp(new Date()),(CURLESSON&&CURLESSON.dirHandle)||null,mime,extFor(mime));
     /* WebM приезжает без оглавления — строим его на лету. Для MP4 вместо
@@ -2106,6 +2410,9 @@ async function startRec(){
     try{ if(S.dir){ const fh=await S.dir.getFileHandle(S.writeName,{create:true}); S.writable=await fh.createWritable(); } }catch(e){ S.writable=null; S.dir=null; }
     rec=new MediaRecorder(new MediaStream(tracks),opts);
     recSession=S; setSaveMsg("");
+    /* Свести звук не вышло — дубль пойдёт с одним микрофоном. Молчать об этом
+       нельзя: узнать на монтаже, что звука демо нет во всём дубле, — поздно. */
+    if(scrAudioLost) setSaveMsg("⚠ звук экрана не пишется — только микрофон",true,"Свести звук экрана с микрофоном не вышло (браузер не запустил обработку звука). Этот дубль пишется только с микрофоном. Останови его и начни заново; не поможет — перезагрузи страницу.");
     rec.ondataavailable=e=>{
       if(!e.data.size)return;
       S.queue=S.queue.then(async()=>{
@@ -2115,12 +2422,17 @@ async function startRec(){
       }).catch(()=>{ recWriteFailed(S); if(S.ix)S.ix.state.ok=false; S.chunks.push(e.data); });
     };
     rec.onerror=ev=>{ setSaveMsg("сбой записи: "+((ev&&ev.error&&ev.error.name)||"неизвестная ошибка"),true); };
-    rec.onstop=()=>{ S.syncLog=syncStop(); finishRec(S); };
-    const mw=$("#micwarn"); if(mw) mw.style.display=hasAudio?"none":"inline";
+    rec.onstop=()=>{ teardownRecAudio(recA); S.syncLog=syncStop(); finishRec(S); };
+    const mw=$("#micwarn"); if(mw) mw.style.display=micOk?"none":"inline";
     await runCountdown(3);
     rec.start(1000);recording=true;recPaused=false;recAccum=0;recLast=Date.now();slideAccum=0;slideLast=Date.now();updateRecUI();
     syncStart(aTrack);
-  } finally { starting=false; }
+  } finally {
+    starting=false;
+    // До rec.start дело не дошло (упал MediaRecorder, диск) — onstop не придёт, граф убираем сами.
+    if(!recording) teardownRecAudio(recA||recAudio);
+    syncScrAudio();
+  }
 }
 
 /* ======== ТЕСТ СИНХРОНА (studio.html?synctest) ========
@@ -2291,7 +2603,7 @@ async function finishRec(S){
 
 async function writeMarkers(S){
   if(!S.markers.length) return;
-  const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда"};
+  const lab={cut:"ОТМЕТКА",pause:"пауза/склейка",slide:"смена слайда",screen:"экран включён",screenoff:"экран выключен"};
   const lines=["Запись "+S.actualVideoName,"Таймкоды (позиция в смонтированном видео; паузы уже вырезаны):",""];
   for(const m of S.markers) lines.push(tcFmt(m.t)+"  "+(lab[m.type]||m.type)+"  — слайд "+m.slide);
   const text=lines.join("\n");
@@ -2315,6 +2627,7 @@ function updateRecUI(){
   const mrb=$("#m_rec");if(mrb)mrb.disabled=sv;
   const t=p?"▶":"⏸",pb=$("#pausebtn"),mp=$("#m_pause");if(pb)pb.textContent=t;if(mp)mp.textContent=t;
   const td=$("#tdot");if(td)td.style.background=on?(p?"#e0a030":"#ff3b30"):"#555";
+  syncScrAudio();
   updateRemuxRetryUI();
 }
 function recSecs(){return recording?Math.floor(recAccum/1000):0;}
@@ -2464,7 +2777,7 @@ function bindStudio(){
   $("#campany").oninput=e=>{st.camPanY=+e.target.value;save("camPanY",st.camPanY);applyCam();};
   $("#thumbop").oninput=e=>{st.thumbOpacity=+e.target.value;save("thumbOpacity",st.thumbOpacity);applyCam();};
   $("#camsel").onchange=e=>{st.camDeviceId=e.target.value;save("camDeviceId",st.camDeviceId);if(st.camOn&&!recording){stopCam();startCam();}};
-  $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);if(!recording){releaseMic();ensureAudio();}};
+  $("#micsel").onchange=e=>{st.micDeviceId=e.target.value;save("micDeviceId",st.micDeviceId);/* starting тоже: дубль уже взял прежний трек (напрямую или в граф сведения), и releaseMic посреди отсчёта оставил бы запись без голоса при живом VU */if(!recording&&!starting){releaseMic();ensureAudio();}};
   $("#recbtn").onclick=startRec;$("#pausebtn").onclick=togglePause;$("#stopbtn").onclick=stopRec;
   $("#cutbtn").onclick=markCut;$("#m_cut").onclick=markCut;
   $("#remuxRetryBtn").onclick=retryRemuxAll;
@@ -2489,6 +2802,10 @@ function bindStudio(){
   $("#camshape").onclick=()=>{st.camShape=st.camShape==="circle"?"rect":"circle";save("camShape",st.camShape);snapshotCamBase();applyCam();};
   $("#metabtn").onclick=()=>{resetCamDefault();flashBtn($("#metabtn"));camHint();};
   $("#laserbtn").onclick=toggleLaser;
+  $("#scrbtn").onclick=toggleScreen; $("#m_scr").onclick=toggleScreen;
+  $("#scraudbtn").onclick=()=>{ if(recording||starting) return; st.scrAudio=SCRAUD_SEQ[(SCRAUD_SEQ.indexOf(scrAudioMode())+1)%SCRAUD_SEQ.length]; save("scrAudio",st.scrAudio); syncScrAudio(); };
+  // Окно сменило размер или Chrome переключил вкладку — размер «по экрану» другой.
+  scrVid.addEventListener("resize",syncResBtn);
   window.addEventListener("mousemove",e=>{const n=slideNorm(e.clientX,e.clientY);lastNorm=n;if(laserOn&&n.inside){laserHead={nx:n.nx,ny:n.ny};const t=performance.now();laserMoveT=t;if(t-laserLastPush>8){laserPts.push({nx:n.nx,ny:n.ny,t});laserLastPush=t;}}else laserHead=null;});
   $("#inkbtn").onclick=toggleInk;
   document.querySelectorAll(".inktool").forEach(b=>b.onclick=()=>setInkTool(b.dataset.tool));
@@ -2506,7 +2823,7 @@ function bindStudio(){
   $("#m_camfull").onclick=toggleCamFull;
   $("#savebtn").onclick=saveSettings;
   $("#resetbtn").onclick=resetSettings;
-  $("#back").onclick=()=>{ if(recording) stopRec(); $("#bar").style.display="none"; $("#timers").style.display="none"; $("#slideid").style.display="none"; $("#setup").style.display="flex"; };
+  $("#back").onclick=()=>{ if(recording) stopRec(); stopScreen(); /* вышли из студии — захват экрана не должен висеть без единой кнопки на виду */ $("#bar").style.display="none"; $("#timers").style.display="none"; $("#slideid").style.display="none"; $("#setup").style.display="flex"; applyScreen(); };
   $("#restartbtn").onclick=restartShow;
   $("#full").onclick=()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();};
   document.addEventListener("keydown",e=>{
@@ -2521,12 +2838,15 @@ function bindStudio(){
     else if(e.key.toLowerCase()==="f"){$("#full").click();}
     else if(e.key.toLowerCase()==="l"){toggleLaser();}
     else if(e.key.toLowerCase()==="d"){toggleInk();}
+    else if(e.key.toLowerCase()==="s"){toggleScreen();}
     else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"&&inkOn){inkUndo();e.preventDefault();}
   });
 }
 function startStudio(){
   const ll=$("#laserlive");if(ll)ll.style.display="block";
-  applyFmt();applyAllControls();applyScriptPresence();updateRecUI();$("#timers").style.display="flex";populateDevices();
+  document.body.classList.toggle("screenonly",SCREENONLY);
+  { const c=$("#g-slide .cap"); if(c) c.textContent=SCREENONLY?"экран":"слайд"; }
+  applyFmt();applyAllControls();applyScriptPresence();applyScreen();updateRecUI();$("#timers").style.display="flex";populateDevices();
   snapshotCamBase(); st.i=0; showSlide(0); syncPlay(); keepAwake();
   if(!started){ started=true; bindStudio(); bindGroupFolding(); bindSliderFolding(); requestAnimationFrame(loop); syncBadge(); }
 }
