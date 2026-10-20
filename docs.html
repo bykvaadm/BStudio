@@ -31,6 +31,16 @@ a.pick .ic{display:block;font-size:34px;line-height:1;margin-bottom:10px;}
 a.pick b{display:block;font-size:18px;line-height:1.3;}
 a.pick span.d{display:block;margin-top:6px;color:var(--sub);font-size:14px;line-height:1.45;}
 a.pick.gen{background:#11131a;border-style:dashed;border-color:#3a3f4d;}
+/* обложки: в карточках — компактно 16:9, в начале раздела — крупно */
+img.thumb,img.cover{display:block;width:100%;max-width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;
+  border:1px solid var(--line);background:#0e0f14;}
+a.pick img.thumb{border-radius:12px;margin:0 0 14px;}
+figure.cover{padding:0;overflow:hidden;}
+figure.cover img.cover{border:0;border-radius:0;}
+@media(min-width:520px){
+  a.pick.gen{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px;align-items:center;}
+  a.pick.gen img.thumb{margin:0;}
+}
 a.pick.gen b{color:var(--acc);}
 .genrow{grid-column:1/-1;}
 /* разделы */
@@ -108,10 +118,10 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <h2>Что хочешь сделать?</h2>
   <p class="lead">BStudio — студия записи видеолекций прямо в браузере: слайды, камера, суфлёр и запись в одном окне. Выбери, что нужно, — покажем по шагам.</p>
   <div class="cards">
-    <a class="pick" href="#screen"><span class="ic">🖥</span><b>Записать экран</b><span class="d">Показать работу на компьютере — программу, сайт, код — с камерой в углу.</span></a>
-    <a class="pick" href="#slides"><span class="ic">🖼</span><b>Записать презентацию без суфлёра</b><span class="d">Есть слайды, говоришь своими словами.</span></a>
-    <a class="pick" href="#prompter"><span class="ic">📜</span><b>Записать лекцию с суфлёром</b><span class="d">Слайды плюс текст, который плывёт сверху, пока ты читаешь.</span></a>
-    <div class="genrow"><a class="pick gen" href="#general"><span class="ic">🧭</span><b>Общий функционал</b><span class="d">Что умеет студия, панель управления, горячие клавиши, куда сохраняется запись и что делать, если что-то не работает.</span></a></div>
+    <a class="pick" href="#screen"><img class="thumb" src="docs/img/hero-screen.webp" alt="Человек работает за компьютером: на мониторе программа с графиком, в углу экрана — окошко с его камерой" width="1280" height="720" loading="lazy"><span class="ic">🖥</span><b>Записать экран</b><span class="d">Показать работу на компьютере — программу, сайт, код — с камерой в углу.</span></a>
+    <a class="pick" href="#slides"><img class="thumb" src="docs/img/hero-slides.webp" alt="Девушка рассказывает по слайдам: на мониторе презентация с диаграммами, в углу — её камера" width="1280" height="720" loading="lazy"><span class="ic">🖼</span><b>Записать презентацию без суфлёра</b><span class="d">Есть слайды, говоришь своими словами.</span></a>
+    <a class="pick" href="#prompter"><img class="thumb" src="docs/img/hero-prompter.webp" alt="Человек говорит в камеру, а над монитором плывёт текст суфлёра с подсвеченной строкой" width="1280" height="720" loading="lazy"><span class="ic">📜</span><b>Записать лекцию с суфлёром</b><span class="d">Слайды плюс текст, который плывёт сверху, пока ты читаешь.</span></a>
+    <div class="genrow"><a class="pick gen" href="#general"><img class="thumb" src="docs/img/hero-general.webp" alt="Пульт студии с кнопками воспроизведения, записи, стопа и камеры, рядом микрофон и веб-камера" width="1280" height="720" loading="lazy"><span class="txt"><span class="ic">🧭</span><b>Общий функционал</b><span class="d">Что умеет студия, панель управления, горячие клавиши, куда сохраняется запись и что делать, если что-то не работает.</span></span></a></div>
   </div>
   <div class="tip ok"><p>Нужен <b>Chrome</b> или <b>Edge</b> на компьютере. Safari не подойдёт. Устанавливать ничего не надо — студия открывается по ссылке.</p></div>
 </div>
@@ -121,6 +131,8 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <a class="back" href="#home">← ко всем разделам</a>
   <h2>🖥 Записать экран</h2>
   <p class="lead">Слайды не нужны: студия покажет то, что на экране, добавит камеру и запишет всё в одно видео.</p>
+
+  <figure class="cover"><img class="cover" src="docs/img/hero-screen.webp" alt="Человек работает за компьютером: на мониторе программа с графиком, в углу экрана — окошко с его камерой" width="1280" height="720" loading="lazy"></figure>
 
   <figure><img src="docs/img/start-screen.svg" alt="Стартовый экран студии: кнопки «📁 Выбрать папку», «▶ Поехали», «🖥 Транслировать экран» и «📖 Документация»" loading="lazy"></figure>
 
@@ -144,8 +156,9 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <p>Если видишь <b class="ui">«⚠ экран без звука»</b> — выключи <b class="ui">«🖥 экран»</b>, включи снова и поставь галочку.</p>
 
   <h3>Лучший способ: два монитора</h3>
+  <figure class="cover"><img class="cover" src="docs/img/two-monitors.webp" alt="Человек за двумя мониторами: на левом — рабочий экран со слайдом, на правом — студия с этой же картинкой, его камерой и жёлтой обводкой со стрелкой" width="1280" height="720" loading="lazy"></figure>
   <figure><img src="docs/img/two-monitors.svg" alt="Два монитора: слева рабочий экран, который записывается; справа окно студии с картинкой этого экрана, камерой и нарисованной жёлтой стрелкой" loading="lazy">
-    <figcaption>Слева — то, что показываешь. Справа — студия: видишь себя, камеру и можешь рисовать поверх.</figcaption></figure>
+    <figcaption>Схема: слева — то, что показываешь. Справа — студия: видишь себя, камеру и можешь рисовать поверх.</figcaption></figure>
   <ol class="steps">
     <li>Перетащи окно студии на второй монитор.</li>
     <li>Транслируй <b>первый</b> монитор — тот, где работаешь.</li>
@@ -164,6 +177,8 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <a class="back" href="#home">← ко всем разделам</a>
   <h2>🖼 Записать презентацию без суфлёра</h2>
   <p class="lead">Есть слайды-картинки, говоришь своими словами. Студия показывает слайд, тебя в углу и записывает.</p>
+
+  <figure class="cover"><img class="cover" src="docs/img/hero-slides.webp" alt="Девушка рассказывает по слайдам: на мониторе презентация с диаграммами, в углу — её камера" width="1280" height="720" loading="lazy"></figure>
 
   <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: папка deck_frames с картинками p-01.png, p-02.png…, файл 03-script.md, а после записи — видео lecture-….mp4" loading="lazy">
     <figcaption>Папка урока. Для записи без суфлёра хватит одних картинок — файл <code>03-script.md</code> не нужен.</figcaption></figure>
@@ -190,6 +205,8 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <a class="back" href="#home">← ко всем разделам</a>
   <h2>📜 Записать лекцию с суфлёром</h2>
   <p class="lead">То же, что запись презентации, только сверху плывёт твой текст — читаешь, глядя почти в камеру.</p>
+
+  <figure class="cover"><img class="cover" src="docs/img/hero-prompter.webp" alt="Человек говорит в камеру, а над монитором плывёт текст суфлёра с подсвеченной строкой" width="1280" height="720" loading="lazy"></figure>
 
   <ol class="steps">
     <li>Рядом со слайдами положи текстовый файл <code>03-script.md</code> (имя именно такое).</li>
@@ -233,6 +250,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
 <section class="sec" id="general">
   <a class="back" href="#home">← ко всем разделам</a>
   <h2>🧭 Общий функционал</h2>
+  <figure class="cover"><img class="cover" src="docs/img/hero-general.webp" alt="Пульт студии с кнопками воспроизведения, записи, стопа и камеры, рядом микрофон и веб-камера" width="1280" height="720" loading="lazy"></figure>
   <div class="gen-layout">
     <nav class="gnav" aria-label="Подразделы">
       <a href="#g-about">Что умеет студия</a>
@@ -266,7 +284,8 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
         <li>Если нужен суфлёр — добавь <code>03-script.md</code> (как писать — в разделе <a href="#prompter">«Лекция с суфлёром»</a>).</li>
         <li>На стартовом экране выбери формат: <b class="ui">«MP4»</b> (играется везде — бери его) или <b class="ui">«WebM»</b>.</li>
       </ol>
-      <div class="tip"><p>Урок без текста помечен в списке «— без речитатива»: суфлёра не будет, всё остальное работает.</p>
+      <div class="tip"><p>Слайды обязательны, текст — по желанию. Папка, где лежит только <code>03-script.md</code> без слайдов, в список уроков не попадёт.</p>
+        <p>Урок без текста помечен в списке «— без речитатива»: суфлёра не будет, всё остальное работает.</p>
         <p>В следующий раз папку не нужно искать: на стартовом экране будет <b class="ui">«↩ Открыть последнюю папку»</b>.</p></div>
     </div>
 
@@ -325,6 +344,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
         <li><b class="ui">«сброс положения меню»</b> — вернуть унесённые группы в панель.</li>
         <li><b class="ui">«⌄ свернуть»</b> — спрятать панель, оставить мини-пульт. <b class="ui">«⛶»</b> — полный экран. <b class="ui">«?»</b> — эта документация.</li>
       </ul>
+      <div class="tip"><p>Не видно <b class="ui">«☰»</b>, <b class="ui">«⛶»</b> и <b class="ui">«?»</b> — значит, группа <span class="grpname">ещё</span> свёрнута в ярлык. Нажми на её название — кнопки вернутся (вместе с ними и <b class="ui">«💾»</b>, <b class="ui">«↺»</b>, <b class="ui">«⌄ свернуть»</b>).</p></div>
     </div>
 
     <div class="sub-sec" id="g-mini">
