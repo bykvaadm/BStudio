@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Документация BStudio</title>
+<style>
+:root{--bar:#15161c;--btn:#23252e;--btn2:#2d3038;--acc:#f5c518;--txt:#e8e9ec;
+  --card:#15161d;--line:#262934;--sub:#9aa0a8;--mute:#7e838c;--rec:#c0392b;--ok:#37d27a;--err:#ff7a6e;}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{margin:0;min-height:100vh;color:var(--txt);background:#0b0c0f radial-gradient(1200px 700px at 50% 0%,#1a1d27,#0b0c0f) no-repeat;
+  font:16px/1.6 -apple-system,Segoe UI,Roboto,Inter,sans-serif;overflow-wrap:break-word;}
+a{color:var(--acc);}
+.wrap{width:min(960px,100%);margin:0 auto;padding:0 16px 64px;}
+header.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:22px 0 18px;}
+header.top h1{margin:0;font-size:26px;line-height:1.25;}
+a.tostudio{display:inline-block;padding:9px 14px;border-radius:10px;background:var(--btn);color:var(--txt);text-decoration:none;font-size:15px;}
+a.tostudio:hover{background:var(--btn2);}
+h2{font-size:24px;line-height:1.3;margin:6px 0 10px;}
+h3{font-size:19px;line-height:1.35;margin:30px 0 8px;}
+p,li{color:#d6d8dd;}
+.lead{color:var(--sub);font-size:16px;margin:0 0 18px;}
+/* карточки выбора */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin:8px 0 14px;}
+a.pick{display:block;padding:22px 20px;border-radius:18px;background:var(--card);border:1px solid var(--line);
+  color:var(--txt);text-decoration:none;box-shadow:0 24px 70px rgba(0,0,0,.35);transition:border-color .15s,transform .15s;}
+a.pick:hover{border-color:var(--acc);transform:translateY(-2px);}
+a.pick .ic{display:block;font-size:34px;line-height:1;margin-bottom:10px;}
+a.pick b{display:block;font-size:18px;line-height:1.3;}
+a.pick span.d{display:block;margin-top:6px;color:var(--sub);font-size:14px;line-height:1.45;}
+a.pick.gen{background:#11131a;border-style:dashed;border-color:#3a3f4d;}
+a.pick.gen b{color:var(--acc);}
+.genrow{grid-column:1/-1;}
+/* разделы */
+section.sec{margin-top:34px;padding:26px 22px;border-radius:18px;background:var(--card);border:1px solid var(--line);box-shadow:0 24px 70px rgba(0,0,0,.4);}
+a.back{display:inline-block;margin-bottom:12px;color:var(--sub);text-decoration:none;font-size:14px;}
+a.back:hover{color:var(--acc);}
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0;}
+ol.steps>li{counter-increment:s;position:relative;padding:4px 0 10px 44px;}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:3px;width:30px;height:30px;border-radius:50%;
+  background:var(--acc);color:#111;font-weight:700;font-size:15px;line-height:30px;text-align:center;}
+ul{padding-left:22px;}
+.tip{margin:14px 0;padding:12px 14px 12px 16px;border-left:3px solid var(--acc);background:#1b1d26;border-radius:0 12px 12px 0;}
+.tip.warn{border-left-color:var(--rec);background:#1d1517;}
+.tip.ok{border-left-color:var(--ok);}
+.tip p{margin:4px 0;}
+figure{margin:18px 0;padding:10px;background:#0e0f14;border:1px solid var(--line);border-radius:14px;}
+figure img{display:block;width:100%;height:auto;border-radius:8px;}
+figcaption{margin-top:8px;color:var(--mute);font-size:13.5px;line-height:1.45;}
+/* подписи кнопок и клавиши */
+.ui{display:inline-block;padding:0 7px;border-radius:7px;background:var(--btn);border:1px solid #333744;color:var(--txt);
+  font-weight:600;font-size:.92em;line-height:1.55;white-space:nowrap;}
+.ui.go{background:var(--acc);border-color:var(--acc);color:#111;}
+.ui.rec{background:#3a1f1d;border-color:#5e2c27;color:#ffd9d4;}
+kbd{display:inline-block;min-width:1.7em;padding:0 6px;border-radius:6px;background:#2a2d37;border:1px solid #3b3f4c;
+  border-bottom-width:3px;color:var(--txt);font:600 .88em/1.55 ui-monospace,Menlo,monospace;text-align:center;white-space:nowrap;}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:#0e0f14;border:1px solid #2b2e38;border-radius:5px;padding:0 4px;overflow-wrap:anywhere;}
+pre{margin:12px 0;padding:14px;background:#0e0f14;border:1px solid #2b2e38;border-radius:12px;overflow-x:auto;
+  font:14px/1.55 ui-monospace,Menlo,monospace;color:#d6d8dd;white-space:pre-wrap;}
+pre .h{color:var(--acc);}
+pre .c{color:var(--mute);}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:15px;}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line);}
+th{color:var(--sub);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.05em;}
+td:first-child{white-space:nowrap;}
+.grpname{display:inline-block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#8a8f99;
+  border:1px solid #2a2e39;border-radius:7px;padding:1px 7px;background:rgba(22,26,35,.92);}
+/* общий функционал: меню подразделов */
+.gen-layout{display:block;}
+nav.gnav{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px;padding:10px 0;position:sticky;top:0;z-index:2;background:var(--card);border-bottom:1px solid var(--line);}
+nav.gnav a{padding:6px 11px;border-radius:9px;background:var(--btn);color:var(--txt);text-decoration:none;font-size:14px;}
+nav.gnav a:hover{background:var(--btn2);}
+nav.gnav a.cur{background:var(--acc);color:#111;}
+.sub-sec{scroll-margin-top:110px;}
+.sub-sec>h3{border-top:1px solid var(--line);padding-top:24px;}
+.sub-sec:first-child>h3{border-top:0;padding-top:0;margin-top:12px;}
+@media(min-width:900px){
+  .gen-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:26px;}
+  nav.gnav{flex-direction:column;align-self:start;top:16px;border-bottom:0;padding:0;}
+  .sub-sec{scroll-margin-top:20px;}
+}
+@media(max-width:560px){
+  section.sec{padding:20px 14px;}
+  header.top h1{font-size:22px;}
+  td:first-child{white-space:normal;}
+  th,td{padding:8px 6px;overflow-wrap:anywhere;}
+  .ui{white-space:normal;}
+}
+/* с JS: показываем либо главную, либо один раздел */
+.js section.sec{display:none;}
+.js section.sec.on{display:block;margin-top:6px;}
+.js body.insec #home{display:none;}
+footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>📖 Документация BStudio</h1>
+  <a class="tostudio" href="studio.html">← в студию</a>
+</header>
+
+<!-- ================= ГЛАВНАЯ ================= -->
+<div id="home">
+  <h2>Что хочешь сделать?</h2>
+  <p class="lead">BStudio — студия записи видеолекций прямо в браузере: слайды, камера, суфлёр и запись в одном окне. Выбери, что нужно, — покажем по шагам.</p>
+  <div class="cards">
+    <a class="pick" href="#screen"><span class="ic">🖥</span><b>Записать экран</b><span class="d">Показать работу на компьютере — программу, сайт, код — с камерой в углу.</span></a>
+    <a class="pick" href="#slides"><span class="ic">🖼</span><b>Записать презентацию без суфлёра</b><span class="d">Есть слайды, говоришь своими словами.</span></a>
+    <a class="pick" href="#prompter"><span class="ic">📜</span><b>Записать лекцию с суфлёром</b><span class="d">Слайды плюс текст, который плывёт сверху, пока ты читаешь.</span></a>
+    <div class="genrow"><a class="pick gen" href="#general"><span class="ic">🧭</span><b>Общий функционал</b><span class="d">Что умеет студия, панель управления, горячие клавиши, куда сохраняется запись и что делать, если что-то не работает.</span></a></div>
+  </div>
+  <div class="tip ok"><p>Нужен <b>Chrome</b> или <b>Edge</b> на компьютере. Safari не подойдёт. Устанавливать ничего не надо — студия открывается по ссылке.</p></div>
+</div>
+
+<!-- ================= ЭКРАН ================= -->
+<section class="sec" id="screen">
+  <a class="back" href="#home">← ко всем разделам</a>
+  <h2>🖥 Записать экран</h2>
+  <p class="lead">Слайды не нужны: студия покажет то, что на экране, добавит камеру и запишет всё в одно видео.</p>
+
+  <figure><img src="docs/img/start-screen.svg" alt="Стартовый экран студии: кнопки «📁 Выбрать папку», «▶ Поехали», «🖥 Транслировать экран» и «📖 Документация»" loading="lazy"></figure>
+
+  <ol class="steps">
+    <li>Открой студию в Chrome или Edge. Если хочешь, чтобы видео сразу легло в нужную папку, — нажми <b class="ui">«📁 Выбрать папку»</b>. Можно и не выбирать: тогда файл просто скачается после остановки.</li>
+    <li>Нажми <b class="ui">«🖥 Транслировать экран»</b>.</li>
+    <li>Chrome спросит, чем поделиться: вкладкой, окном или всем экраном. Выбери и подтверди.</li>
+    <li>Нужен ты в кадре — нажми <b class="ui">«📷 вкл»</b> и разреши доступ к камере.</li>
+    <li>Нажми <b class="ui rec">«⏺ Запись»</b> или клавишу <kbd>R</kbd>. Пойдёт отсчёт 3-2-1 — и запись началась.</li>
+    <li>Закончил — нажми <b class="ui">«⏹»</b>. Видео сохранится в папку (или скачается).</li>
+  </ol>
+
+  <figure><img src="docs/img/share-picker.svg" alt="Окно Chrome «Чем поделиться?»: вкладка, окно или весь экран; выбран экран, отмечена галочка звука" loading="lazy">
+    <figcaption>Окно выбора рисует сам Chrome. Хочешь записать звук с экрана — поставь здесь галочку звука.</figcaption></figure>
+
+  <h3>Нужен звук с экрана (видео, музыка, звук программы)</h3>
+  <ol class="steps">
+    <li><b>До</b> начала трансляции в группе <span class="grpname">запись</span> нажимай кнопку <b class="ui">«звук экрана»</b>, пока на ней не появится «вместе с микрофоном» (или «Л микрофон · П экран» — микрофон и экран в разных каналах).</li>
+    <li>Включи трансляцию и в окне Chrome поставь галочку звука.</li>
+  </ol>
+  <p>Если видишь <b class="ui">«⚠ экран без звука»</b> — выключи <b class="ui">«🖥 экран»</b>, включи снова и поставь галочку.</p>
+
+  <h3>Лучший способ: два монитора</h3>
+  <figure><img src="docs/img/two-monitors.svg" alt="Два монитора: слева рабочий экран, который записывается; справа окно студии с картинкой этого экрана, камерой и нарисованной жёлтой стрелкой" loading="lazy">
+    <figcaption>Слева — то, что показываешь. Справа — студия: видишь себя, камеру и можешь рисовать поверх.</figcaption></figure>
+  <ol class="steps">
+    <li>Перетащи окно студии на второй монитор.</li>
+    <li>Транслируй <b>первый</b> монитор — тот, где работаешь.</li>
+    <li>Работай как обычно: в запись идёт рабочий экран, а ты в студии видишь себя и картинку.</li>
+    <li>Хочешь что-то показать — включи <b class="ui">«🔴 курсор»</b> (<kbd>L</kbd>) или <b class="ui">«✏️ рисование»</b> (<kbd>D</kbd>) и води мышью по картинке экрана <b>в окне студии</b>. Указка и рисунок попадут в видео.</li>
+  </ol>
+
+  <div class="tip warn"><p><b>Не транслируй монитор, на котором открыта студия</b> — получится «зеркальный коридор»: картинка в картинке до бесконечности.</p>
+    <p>Рисовать можно только в окне студии. Поверх самого рабочего стола или другой программы рисунок не появится.</p></div>
+  <div class="tip"><p><b>macOS:</b> при первом запуске разреши Chrome запись экрана: Системные настройки → Конфиденциальность и безопасность → Запись экрана и системного звука. После этого перезапусти Chrome.</p>
+    <p><b>Посреди лекции со слайдами</b> экран тоже можно показать: кнопка <b class="ui">«🖥 экран»</b> или клавиша <kbd>S</kbd>. Нажмёшь ещё раз — вернётся слайд.</p></div>
+</section>
+
+<!-- ================= СЛАЙДЫ БЕЗ СУФЛЁРА ================= -->
+<section class="sec" id="slides">
+  <a class="back" href="#home">← ко всем разделам</a>
+  <h2>🖼 Записать презентацию без суфлёра</h2>
+  <p class="lead">Есть слайды-картинки, говоришь своими словами. Студия показывает слайд, тебя в углу и записывает.</p>
+
+  <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: папка deck_frames с картинками p-01.png, p-02.png…, файл 03-script.md, а после записи — видео lecture-….mp4" loading="lazy">
+    <figcaption>Папка урока. Для записи без суфлёра хватит одних картинок — файл <code>03-script.md</code> не нужен.</figcaption></figure>
+
+  <ol class="steps">
+    <li>Положи слайды в папку урока. Подойдёт папка <code>deck_frames/</code> с <code>p-01.png</code>, <code>p-02.png</code>…, PDF-файл или просто любая папка с картинками (порядок — по именам файлов).</li>
+    <li>Открой студию и нажми <b class="ui">«📁 Выбрать папку»</b>. Разреши Chrome доступ к папке — туда же ляжет запись.</li>
+    <li>В списке <b class="ui">«Урок»</b> выбери урок, в списке <b class="ui">«Слайды»</b> — откуда брать слайды.</li>
+    <li>Нажми <b class="ui go">«▶ Поехали»</b>.</li>
+    <li>Включи камеру: <b class="ui">«📷 вкл»</b>.</li>
+    <li>Нажми <b class="ui rec">«⏺ Запись»</b> (или <kbd>R</kbd>) и листай слайды кнопками <b class="ui">«◀»</b> <b class="ui">«▶»</b> или стрелками <kbd>←</kbd> <kbd>→</kbd>.</li>
+    <li>Закончил — <b class="ui">«⏹»</b>.</li>
+  </ol>
+
+  <figure><img src="docs/img/record-flow.svg" alt="Запись в три шага: «⏺ Запись», отсчёт 3-2-1, «⏹» — и файл в папке урока" loading="lazy"></figure>
+
+  <div class="tip"><p>Если в уроке есть текст для суфлёра, а сейчас он не нужен, — спрячь суфлёр кнопкой <b class="ui">«👁»</b>.</p>
+    <p>PDF открывается только с интернетом. Презентацию PowerPoint (PPTX) сначала сохрани как PDF или картинки.</p>
+    <p>Ошибся — нажми <b class="ui">«⚑ отметка»</b>: в файле отметок появится время, и при монтаже это место легко найти.</p></div>
+</section>
+
+<!-- ================= С СУФЛЁРОМ ================= -->
+<section class="sec" id="prompter">
+  <a class="back" href="#home">← ко всем разделам</a>
+  <h2>📜 Записать лекцию с суфлёром</h2>
+  <p class="lead">То же, что запись презентации, только сверху плывёт твой текст — читаешь, глядя почти в камеру.</p>
+
+  <ol class="steps">
+    <li>Рядом со слайдами положи текстовый файл <code>03-script.md</code> (имя именно такое).</li>
+    <li>Текст для первой картинки (титула) пиши под строкой <code>## Титульный слайд</code>. Для каждой следующей картинки — строка-заголовок <code>### Слайд 1.1 — …</code>, <code>### Слайд 1.2 — …</code> и так далее (номер — два числа через точку), а под ней — что говорить. Блоки идут по порядку: первый — первой картинке, второй — второй. Пример ниже.</li>
+    <li>Дальше как обычно: <b class="ui">«📁 Выбрать папку»</b> → <b class="ui">«Урок»</b> → <b class="ui">«Слайды»</b> → <b class="ui go">«▶ Поехали»</b> → <b class="ui">«📷 вкл»</b>.</li>
+    <li>Нажми <b class="ui rec">«⏺ Запись»</b>, а потом запусти текст: <kbd>Пробел</kbd> или клик по тексту суфлёра.</li>
+    <li>Скорость текста — <kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>Shift</kbd>+<kbd>↓</kbd>. Пауза — снова <kbd>Пробел</kbd>.</li>
+    <li>Листай слайды <kbd>→</kbd>, в конце — <b class="ui">«⏹»</b>.</li>
+  </ol>
+
+  <h3>Как выглядит файл с текстом</h3>
+<pre><span class="h">## Титульный слайд</span>
+Привет! Сегодня разберём, как записать лекцию.
+
+<span class="h">### Слайд 1.1 — Что нужно</span>
+Нужны две вещи: картинки слайдов и этот текст.
+
+Пустая строка — новый абзац. [P] Это короткая пауза.
+
+<span class="h">### Слайд 1.2 — Как разложить</span>
+Текст для третьей картинки.</pre>
+  <p>Строки, которые начинаются с <code>#</code> или <code>&gt;</code>, в суфлёр не попадают — это заголовки и заметки для себя. В этом примере три блока — значит, нужны три картинки: титул и ещё две. Готовый пример урока на 4 слайда лежит в папке <a href="https://github.com/bykvaadm/BStudio/tree/main/example" target="_blank" rel="noopener"><code>example/</code></a> репозитория — скачай и попробуй.</p>
+
+  <figure><img src="docs/img/script-to-slides.svg" alt="Блоки текста «### Слайд 1.1», «### Слайд 1.2» соединены стрелками со второй и третьей картинками слайдов" loading="lazy">
+    <figcaption>Блоки раздаются картинкам по порядку. Первая картинка — титул (<code>## Титульный слайд</code>), поэтому <code>### Слайд 1.1</code> — вторая картинка, <code>### Слайд 1.2</code> — третья.</figcaption></figure>
+
+  <figure><img src="docs/img/prompter.svg" alt="Суфлёр крупно: текст, подсвеченная строка чтения, кнопка ▶/⏸ и подсказки «пробел», «Shift+↑↓ скорость»" loading="lazy">
+    <figcaption>Подсвеченная полоса — строка, которую читаешь сейчас. Суфлёр в видео не попадает.</figcaption></figure>
+
+  <h3>Помощники</h3>
+  <ul>
+    <li><b class="ui">«авто»</b> — после смены слайда текст сам начинает плыть через секунду.</li>
+    <li><b class="ui">«автослайд»</b> — когда текст слайда закончился, появляется жёлтый отсчёт 5…1 и студия сама листает дальше.</li>
+  </ul>
+
+  <div class="tip"><p><b>Взгляд в объектив.</b> Поставь камеру прямо под суфлёром (кнопка-звёздочка в группе <span class="grpname">камера</span> двигает её по кругу) — тогда, читая, ты смотришь почти в камеру.</p>
+    <p>Текст мелкий или крупный — <b class="ui">«A−»</b> / <b class="ui">«A+»</b> в группе <span class="grpname">суфлёр</span>. Немного отстал — <kbd>↑</kbd> / <kbd>↓</kbd> подкручивают текст.</p></div>
+</section>
+
+<!-- ================= ОБЩИЙ ФУНКЦИОНАЛ ================= -->
+<section class="sec" id="general">
+  <a class="back" href="#home">← ко всем разделам</a>
+  <h2>🧭 Общий функционал</h2>
+  <div class="gen-layout">
+    <nav class="gnav" aria-label="Подразделы">
+      <a href="#g-about">Что умеет студия</a>
+      <a href="#g-prep">Подготовка урока</a>
+      <a href="#g-panel">Панель управления</a>
+      <a href="#g-mini">Мини-пульт</a>
+      <a href="#g-keys">Горячие клавиши</a>
+      <a href="#g-save">Куда сохраняется запись</a>
+      <a href="#g-help">Если что-то не работает</a>
+    </nav>
+    <div>
+
+    <div class="sub-sec" id="g-about">
+      <h3>Что умеет студия</h3>
+      <figure><img src="docs/img/studio-overview.svg" alt="Общий вид студии: слайд по центру, камера в углу, суфлёр сверху, панель управления снизу" loading="lazy"></figure>
+      <ul>
+        <li>Показывает слайды или экран компьютера и записывает их вместе с тобой с камеры.</li>
+        <li>Суфлёр: твой текст плывёт сверху, а в видео не попадает.</li>
+        <li>Лазерная указка и рисование поверх слайда — попадают в видео.</li>
+        <li>Таймеры слева сверху: сколько идёт запись и сколько ты на этом слайде. В видео их нет.</li>
+        <li>Запись сразу в папку урока, в MP4 (или WebM). Всё работает в браузере, никуда не загружается.</li>
+      </ul>
+    </div>
+
+    <div class="sub-sec" id="g-prep">
+      <h3>Подготовка урока</h3>
+      <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: deck_frames с картинками p-01.png…, файл 03-script.md и готовое видео lecture-….mp4" loading="lazy"></figure>
+      <ol class="steps">
+        <li>Заведи папку под урок (несколько уроков — несколько папок внутри одной папки курса).</li>
+        <li>Положи туда слайды: папку <code>deck_frames/</code> с <code>p-01.png</code>, <code>p-02.png</code>…, PDF или любые картинки.</li>
+        <li>Если нужен суфлёр — добавь <code>03-script.md</code> (как писать — в разделе <a href="#prompter">«Лекция с суфлёром»</a>).</li>
+        <li>На стартовом экране выбери формат: <b class="ui">«MP4»</b> (играется везде — бери его) или <b class="ui">«WebM»</b>.</li>
+      </ol>
+      <div class="tip"><p>Урок без текста помечен в списке «— без речитатива»: суфлёра не будет, всё остальное работает.</p>
+        <p>В следующий раз папку не нужно искать: на стартовом экране будет <b class="ui">«↩ Открыть последнюю папку»</b>.</p></div>
+    </div>
+
+    <div class="sub-sec" id="g-panel">
+      <h3>Панель управления</h3>
+      <figure><img src="docs/img/control-panel.svg" alt="Нижняя панель студии с группами «суфлёр», «камера», «рисование», «запись», «слайд», «ещё»" loading="lazy">
+        <figcaption>Клик по названию группы сворачивает её. Потяни за название — и группу можно унести в любое место экрана.</figcaption></figure>
+
+      <h3><span class="grpname">слайд</span> (без слайдов — <span class="grpname">экран</span>)</h3>
+      <ul>
+        <li><b class="ui">«◀»</b> <b class="ui">«N / M»</b> <b class="ui">«▶»</b> — листать слайды.</li>
+        <li><b class="ui">«⏮ сначала»</b> — на первый слайд, таймеры с нуля. Если идёт запись, студия спросит и отбросит её.</li>
+        <li><b class="ui">«🖥 экран»</b> — показать экран вместо слайда; ещё раз — вернуть слайд.</li>
+      </ul>
+
+      <h3><span class="grpname">запись</span></h3>
+      <ul>
+        <li><b class="ui rec">«⏺ Запись»</b> — начать. Во время записи: <b class="ui">«⏸»</b> пауза / <b class="ui">«▶»</b> продолжить, <b class="ui">«⏹»</b> стоп.</li>
+        <li><b class="ui">«⚑ отметка»</b> — поставить метку времени для монтажа. Работает только во время записи.</li>
+        <li><b class="ui">«🎙»</b> и полоска уровня — микрофон слышит тебя. <b class="ui">«⚠ нет звука»</b> — звук не пишется. Рядом — список микрофонов.</li>
+        <li><b class="ui">«звук экрана»</b> — «не писать», «вместе с микрофоном» или «Л микрофон · П экран».</li>
+        <li><b class="ui">«1080p»</b> / <b class="ui">«720p»</b> — размер видео, переключается нажатием. Третий вариант — «по слайдам»: размер как у самих картинок, на кнопке будут цифры, например «1920×1080».</li>
+        <li><b class="ui">«вшить текст»</b> — текст суфлёра полосой внизу видео (как субтитры).</li>
+        <li><b class="ui">«📂 показать в папке»</b> — открыть папку урока с записями. Кнопка появляется только после записи, если выбрана папка.</li>
+      </ul>
+
+      <h3><span class="grpname">камера</span></h3>
+      <ul>
+        <li><b class="ui">«📷 вкл»</b> — включить/выключить; рядом — выбор камеры.</li>
+        <li>Кнопка-звёздочка — передвинуть камеру в другой угол; кнопка зеркала; кнопка «человек в рамке» — камера на весь экран.</li>
+        <li><b class="ui">«▭»</b> / <b class="ui">«◯»</b> — прямоугольник или круг.</li>
+        <li>Ползунки <b class="ui">«размер»</b>, <b class="ui">«зум»</b>, <b class="ui">«↔ сдвиг»</b>, <b class="ui">«↕ сдвиг»</b>; <b class="ui">«сброс камеры»</b> — вернуть как было.</li>
+        <li><b class="ui">«📷→скрипт»</b> — запомнить, как стоит камера на этом слайде (запишется в <code>03-script.md</code>).</li>
+      </ul>
+
+      <h3><span class="grpname">суфлёр</span></h3>
+      <ul>
+        <li><b class="ui">«👁»</b> — показать/спрятать; <b class="ui">«▶»</b> / <b class="ui">«⏸»</b> — пуск/пауза.</li>
+        <li><b class="ui">«скор N»</b> — скорость, <b class="ui">«A−»</b> <b class="ui">«A+»</b> — размер шрифта, <b class="ui">«темп N»</b> — темп чтения (зелёный — комфортный).</li>
+        <li><b class="ui">«авто»</b>, <b class="ui">«автослайд»</b> — см. <a href="#prompter">лекцию с суфлёром</a>.</li>
+        <li><b class="ui">«Ш»</b> и <b class="ui">«В»</b> — ширина и высота окна суфлёра, <b class="ui">«фон»</b> — насколько оно прозрачное; отдельная кнопка ставит суфлёр сверху или снизу.</li>
+      </ul>
+
+      <h3><span class="grpname">рисование</span></h3>
+      <ul>
+        <li><b class="ui">«🔴 курсор»</b> — лазерная указка, <b class="ui">«✏️ рисование»</b> — рисовать мышью.</li>
+        <li>Инструменты: <b class="ui">«✏️»</b> перо, <b class="ui">«🖍»</b> маркер, <b class="ui">«↗»</b> стрелка, <b class="ui">«🩹»</b> ластик; 5 цветов и <b class="ui">«толщина»</b>.</li>
+        <li><b class="ui">«↶»</b> — отменить штрих, <b class="ui">«🧹»</b> — стереть всё на слайде.</li>
+        <li><b class="ui">«при смене слайда: очищать / хранить»</b> — что делать с рисунком при переходе.</li>
+      </ul>
+
+      <h3><span class="grpname">ещё</span></h3>
+      <ul>
+        <li><b class="ui">«☰»</b> — вернуться к выбору урока (запись остановится).</li>
+        <li><b class="ui">«💾»</b> — запомнить настройки как свои, <b class="ui">«↺»</b> — вернуть их.</li>
+        <li><b class="ui">«сброс положения меню»</b> — вернуть унесённые группы в панель.</li>
+        <li><b class="ui">«⌄ свернуть»</b> — спрятать панель, оставить мини-пульт. <b class="ui">«⛶»</b> — полный экран. <b class="ui">«?»</b> — эта документация.</li>
+      </ul>
+    </div>
+
+    <div class="sub-sec" id="g-mini">
+      <h3>Мини-пульт</h3>
+      <figure><img src="docs/img/minibar.svg" alt="Мини-пульт: ◀ ▶ слайд, ▶ суфлёр, ⏺ ⚑ запись, 📷 камера, 🖥 экран, ⌃ панель" loading="lazy"></figure>
+      <p>Нажми <b class="ui">«⌄ свернуть»</b> — панель спрячется, а внизу по центру останется маленький пульт: самое нужное, ничего не загораживает.</p>
+      <ul>
+        <li><b class="ui">«◀»</b> <b class="ui">«▶»</b> — слайды; <b class="ui">«▶»</b> — суфлёр.</li>
+        <li><b class="ui">«⏺»</b> (во время записи <b class="ui">«⏸»</b> <b class="ui">«⏹»</b>) и <b class="ui">«⚑»</b> — запись и отметка.</li>
+        <li><b class="ui">«📷»</b> — камера и камера на весь экран; <b class="ui">«🖥»</b> — экран.</li>
+        <li><b class="ui">«⌃»</b> — вернуть всю панель.</li>
+      </ul>
+    </div>
+
+    <div class="sub-sec" id="g-keys">
+      <h3>Горячие клавиши</h3>
+      <figure><img src="docs/img/keyboard.svg" alt="Клавиатура с подсвеченными клавишами → ← Пробел ↑ ↓ R S L D F и подписями действий" loading="lazy"></figure>
+      <table>
+        <tr><th>Клавиша</th><th>Что делает</th></tr>
+        <tr><td><kbd>→</kbd> / <kbd>PageDown</kbd></td><td>следующий слайд</td></tr>
+        <tr><td><kbd>←</kbd> / <kbd>PageUp</kbd></td><td>предыдущий слайд</td></tr>
+        <tr><td><kbd>Пробел</kbd></td><td>суфлёр: пуск / пауза</td></tr>
+        <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>подкрутить текст суфлёра назад / вперёд</td></tr>
+        <tr><td><kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>суфлёр быстрее / медленнее</td></tr>
+        <tr><td><kbd>R</kbd></td><td>начать запись (с отсчётом 3-2-1); во время записи — остановить</td></tr>
+        <tr><td><kbd>S</kbd></td><td>экран вместо слайда / обратно</td></tr>
+        <tr><td><kbd>L</kbd></td><td>лазерная указка «🔴 курсор»</td></tr>
+        <tr><td><kbd>D</kbd></td><td>рисование «✏️ рисование»</td></tr>
+        <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd></td><td>отменить штрих (в режиме рисования)</td></tr>
+        <tr><td><kbd>F</kbd></td><td>полный экран</td></tr>
+      </table>
+      <div class="tip"><p>Клавиши не работают на стартовом экране и пока курсор стоит в ползунке или списке — кликни по слайду. Пауза записи и отметка — только кнопками <b class="ui">«⏸»</b> и <b class="ui">«⚑ отметка»</b>.</p></div>
+    </div>
+
+    <div class="sub-sec" id="g-save">
+      <h3>Куда сохраняется запись</h3>
+      <ul>
+        <li>В папку урока, файлом вида <code>lecture-ГГГГ-ММ-ДД-ЧЧ-ММ-СС.mp4</code> (или <code>.webm</code>).</li>
+        <li>Рядом — <code>….markers.txt</code> с отметками, паузами и сменами слайдов: удобно для монтажа.</li>
+        <li>Папку не выбирал — файл скачается браузером, как обычная загрузка.</li>
+      </ul>
+      <div class="tip warn"><p>После <b class="ui">«⏹»</b> на кнопке будет <b class="ui">«⏳ сохраняю»</b>, а ниже — «готовлю файл для монтажа…». <b>Не закрывай вкладку</b>, пока не появится «сохранено».</p></div>
+      <p>Если файл не успел подготовиться, появится <b class="ui">«🔁 подготовить для монтажа (N)»</b> — нажми, студия доделает. Найти записи — <b class="ui">«📂 показать в папке»</b> (кнопка появляется после записи, если выбрана папка).</p>
+    </div>
+
+    <div class="sub-sec" id="g-help">
+      <h3>Если что-то не работает</h3>
+      <table>
+        <tr><th>Что случилось</th><th>Что сделать</th></tr>
+        <tr><td>«Нужен Chrome (или Edge)…», кнопка папки не нажимается</td><td>Открой студию в Chrome или Edge. Safari и Firefox не подходят.</td></tr>
+        <tr><td>Камера не включается</td><td>Разреши доступ к камере в окне браузера (значок в адресной строке). Закрой другие программы, которые держат камеру (Zoom, Teams). Открывай студию по ссылке https, а не как файл с диска.</td></tr>
+        <tr><td>«⚠ нет звука»</td><td>Разреши микрофон, выбери нужный в списке микрофонов в группе <span class="grpname">запись</span>.</td></tr>
+        <tr><td>Экран не транслируется, на macOS ошибка</td><td>Системные настройки → Конфиденциальность и безопасность → Запись экрана и системного звука → включи Chrome и перезапусти его.</td></tr>
+        <tr><td>«⚠ экран без звука»</td><td>Выключи <b class="ui">«🖥 экран»</b>, проверь <b class="ui">«звук экрана»</b>, включи трансляцию снова и поставь галочку звука.</td></tr>
+        <tr><td>Картинка в картинке до бесконечности</td><td>Ты транслируешь монитор, где открыта студия. Выбери другой монитор или окно.</td></tr>
+        <tr><td>Клавиши не реагируют</td><td>Кликни по слайду: курсор остался в ползунке или списке.</td></tr>
+        <tr><td>Нет суфлёра</td><td>Проверь, что файл называется <code>03-script.md</code> и лежит в папке урока, а заголовки — <code>### Слайд 1.1 — …</code>. Или суфлёр спрятан — нажми <b class="ui">«👁»</b>.</td></tr>
+        <tr><td>PPTX в списке, но не выбирается</td><td>Сохрани презентацию как PDF или картинки и положи в папку урока.</td></tr>
+      </table>
+    </div>
+
+    </div>
+  </div>
+</section>
+
+<footer><a href="#home">↑ ко всем разделам</a> · <a href="studio.html">← в студию</a></footer>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement;
+  root.classList.add('js');
+  function route(){
+    var id=decodeURIComponent(location.hash.slice(1));
+    var el=id?document.getElementById(id):null;
+    var sec=el&&el.closest?el.closest('section.sec'):null;
+    var all=document.querySelectorAll('section.sec');
+    for(var i=0;i<all.length;i++) all[i].classList.toggle('on',all[i]===sec);
+    document.body.classList.toggle('insec',!!sec);
+    var links=document.querySelectorAll('nav.gnav a');
+    for(var j=0;j<links.length;j++) links[j].classList.toggle('cur',links[j].getAttribute('href')==='#'+id);
+    if(sec&&el!==sec) el.scrollIntoView();
+    else window.scrollTo(0,0);
+  }
+  window.addEventListener('hashchange',route);
+  route();
+})();
+</script>
+</body>
+</html>

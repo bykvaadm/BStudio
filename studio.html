@@ -25,6 +25,12 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 #restoreBox button{background:#1f2733;}
 .msg{margin-top:14px;color:#9aa0a8;font-size:13px;min-height:18px;line-height:1.5;}
 .msg.err{color:#ff7a6e;}
+/* Ссылки на документацию: выглядят как кнопки студии, открываются в новой вкладке. */
+a.big{display:block;width:100%;padding:14px;border-radius:12px;background:var(--btn);color:var(--txt);font-size:16px;text-align:center;text-decoration:none;margin-top:14px;}
+a.big:hover{background:var(--btn2);}
+#setup a.docs{background:#1f2733;border:1px solid #2f3a4a;}
+a.btnlink{display:inline-flex;align-items:center;justify-content:center;background:var(--btn);color:var(--txt);border-radius:9px;padding:9px 12px;font-size:15px;min-height:40px;min-width:40px;text-decoration:none;font-weight:700;}
+a.btnlink:hover{background:var(--btn2);}
 /* ---- studio ---- */
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0c0f;}
 #slideImg{max-width:100%;max-height:100%;object-fit:contain;}
@@ -250,6 +256,7 @@ input[type=range]{width:90px;}
   <div class="or">или без слайдов</div>
   <button id="goScreen" class="big" type="button">🖥 Транслировать экран</button>
   <div class="note">Экран, окно или вкладку спросит сам Chrome. Запись ляжет в выбранную папку (в папку урока, если урок выбран); без папки — скачается по «Стоп».</div>
+  <a class="big docs" href="docs.html" target="_blank" rel="noopener">📖 Документация</a>
   <div id="setupMsg" class="msg"></div>
 </div></div>
 
@@ -357,7 +364,8 @@ input[type=range]{width:90px;}
      <span class="vdiv"></span>
      <button id="hidebar" title="свернуть панель">⌄ свернуть</button>
      <span class="vdiv"></span>
-     <button id="full" title="полный экран">⛶</button></div>
+     <button id="full" title="полный экран">⛶</button>
+     <a id="docsbtn" class="btnlink" href="docs.html" target="_blank" rel="noopener" title="Документация">?</a></div>
   </div>
 </div>
 
