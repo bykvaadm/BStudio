@@ -86,10 +86,17 @@ nav.gnav a.cur{background:var(--acc);color:#111;}
 .sub-sec{scroll-margin-top:110px;}
 .sub-sec>h3{border-top:1px solid var(--line);padding-top:24px;}
 .sub-sec:first-child>h3{border-top:0;padding-top:0;margin-top:12px;}
+/* три способа подать слайды */
+.sources{scroll-margin-top:110px;margin:22px 0;padding:18px 16px;border:1px solid var(--acc);border-radius:16px;background:#14151c;}
+.sources h4{margin:0 0 6px;font-size:18px;line-height:1.35;color:var(--acc);}
+.srcs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:12px 0;}
+.srcs>div{padding:14px 14px 10px;border-radius:12px;background:#0e0f14;border:1px solid var(--line);}
+.srcs b.t{display:block;font-size:17px;line-height:1.35;margin-bottom:4px;}
+.srcs p{margin:6px 0;font-size:14.5px;line-height:1.5;}
 @media(min-width:900px){
   .gen-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:26px;}
   nav.gnav{flex-direction:column;align-self:start;top:16px;border-bottom:0;padding:0;}
-  .sub-sec{scroll-margin-top:20px;}
+  .sub-sec,.sources{scroll-margin-top:20px;}
 }
 @media(max-width:560px){
   section.sec{padding:20px 14px;}
@@ -184,7 +191,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
     <figcaption>Папка урока. Для записи без суфлёра хватит одних картинок — файл <code>03-script.md</code> не нужен.</figcaption></figure>
 
   <ol class="steps">
-    <li>Положи слайды в папку урока. Подойдёт папка <code>deck_frames/</code> с <code>p-01.png</code>, <code>p-02.png</code>…, PDF-файл или просто любая папка с картинками (порядок — по именам файлов).</li>
+    <li>Положи слайды в папку урока: картинки, PDF или HTML-деку — см. <a href="#g-sources">«Три способа подать слайды»</a>.</li>
     <li>Открой студию и нажми <b class="ui">«📁 Выбрать папку»</b>. Разреши Chrome доступ к папке — туда же ляжет запись.</li>
     <li>В списке <b class="ui">«Урок»</b> выбери урок, в списке <b class="ui">«Слайды»</b> — откуда брать слайды.</li>
     <li>Нажми <b class="ui go">«▶ Поехали»</b>.</li>
@@ -196,7 +203,6 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <figure><img src="docs/img/record-flow.svg" alt="Запись в три шага: «⏺ Запись», отсчёт 3-2-1, «⏹» — и файл в папке урока" loading="lazy"></figure>
 
   <div class="tip"><p>Если в уроке есть текст для суфлёра, а сейчас он не нужен, — спрячь суфлёр кнопкой <b class="ui">«👁»</b>.</p>
-    <p>PDF открывается только с интернетом. Презентацию PowerPoint (PPTX) сначала сохрани как PDF или картинки.</p>
     <p>Ошибся — нажми <b class="ui">«⚑ отметка»</b>: в файле отметок появится время, и при монтаже это место легко найти.</p></div>
 </section>
 
@@ -209,6 +215,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
   <figure class="cover"><img class="cover" src="docs/img/hero-prompter.webp" alt="Человек говорит в камеру, а над монитором плывёт текст суфлёра с подсвеченной строкой" width="1280" height="720" loading="lazy"></figure>
 
   <ol class="steps">
+    <li>Положи слайды в папку урока — см. <a href="#g-sources">«Три способа подать слайды»</a>.</li>
     <li>Рядом со слайдами положи текстовый файл <code>03-script.md</code> (имя именно такое).</li>
     <li>Текст для первой картинки (титула) пиши под строкой <code>## Титульный слайд</code>. Для каждой следующей картинки — строка-заголовок <code>### Слайд 1.1 — …</code>, <code>### Слайд 1.2 — …</code> и так далее (номер — два числа через точку), а под ней — что говорить. Блоки идут по порядку: первый — первой картинке, второй — второй. Пример ниже.</li>
     <li>Дальше как обычно: <b class="ui">«📁 Выбрать папку»</b> → <b class="ui">«Урок»</b> → <b class="ui">«Слайды»</b> → <b class="ui go">«▶ Поехали»</b> → <b class="ui">«📷 вкл»</b>.</li>
@@ -255,6 +262,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
     <nav class="gnav" aria-label="Подразделы">
       <a href="#g-about">Что умеет студия</a>
       <a href="#g-prep">Подготовка урока</a>
+      <a href="#g-sources">Три способа подать слайды</a>
       <a href="#g-panel">Панель управления</a>
       <a href="#g-mini">Мини-пульт</a>
       <a href="#g-keys">Горячие клавиши</a>
@@ -280,13 +288,41 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
       <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: deck_frames с картинками p-01.png…, файл 03-script.md и готовое видео lecture-….mp4" loading="lazy"></figure>
       <ol class="steps">
         <li>Заведи папку под урок (несколько уроков — несколько папок внутри одной папки курса).</li>
-        <li>Положи туда слайды: папку <code>deck_frames/</code> с <code>p-01.png</code>, <code>p-02.png</code>…, PDF или любые картинки.</li>
+        <li>Положи туда слайды — картинками, PDF или HTML-декой из Claude Design (подробно — ниже, <a href="#g-sources">«Три способа подать слайды»</a>).</li>
         <li>Если нужен суфлёр — добавь <code>03-script.md</code> (как писать — в разделе <a href="#prompter">«Лекция с суфлёром»</a>).</li>
         <li>На стартовом экране выбери формат: <b class="ui">«MP4»</b> (играется везде — бери его) или <b class="ui">«WebM»</b>.</li>
       </ol>
       <div class="tip"><p>Слайды обязательны, текст — по желанию. Папка, где лежит только <code>03-script.md</code> без слайдов, в список уроков не попадёт.</p>
         <p>Урок без текста помечен в списке «— без речитатива»: суфлёра не будет, всё остальное работает.</p>
         <p>В следующий раз папку не нужно искать: на стартовом экране будет <b class="ui">«↩ Открыть последнюю папку»</b>.</p></div>
+
+      <div class="sources" id="g-sources">
+        <h4>Три способа подать слайды</h4>
+        <p>Слайды всегда лежат в папке урока. Что именно показывать, выбираешь на стартовом экране в списке <b class="ui">«Слайды»</b>.</p>
+        <figure><img src="docs/img/slide-sources.svg" alt="Три способа подать слайды: картинки, PDF и HTML-дека из Claude Design лежат в папке урока и выбираются в списке «Слайды»" loading="lazy"></figure>
+        <div class="srcs">
+          <div>
+            <b class="t">🖼 Картинки</b>
+            <p>Положи в папку урока картинки (PNG, JPG, WebP…) — порядок по именам файлов. Или папку <code>deck_frames/</code> с <code>p-01.png</code>, <code>p-02.png</code>…</p>
+            <p>Интернет не нужен.</p>
+            <p>В списке: «deck_frames — кадры, N шт.» или «… — картинки, N шт.».</p>
+          </div>
+          <div>
+            <b class="t">📄 PDF</b>
+            <p>Положи PDF-файл в папку урока. Если слайд лежит на странице A4 или Letter с полями, студия срежет поля сама.</p>
+            <p>Нужен интернет — без него PDF не откроется.</p>
+            <p>В списке: «имя.pdf — PDF».</p>
+          </div>
+          <div>
+            <b class="t">🧩 HTML-дека из Claude Design</b>
+            <p>Сохрани деку одним HTML-файлом и положи в папку урока. В списке: «имя.html — HTML-дека, импорт в кадры».</p>
+            <p>Нажми <b class="ui go">«▶ Поехали»</b>. Chrome спросит, что показать, — выбери <b class="ui">«Эта вкладка»</b> → <b class="ui">«Поделиться»</b> и не трогай окно, пока студия листает слайды.</p>
+            <p>Кадры лягут в <code>deck_frames/</code> рядом с декой. Дальше это обычные картинки — без интернета и без повторной съёмки.</p>
+          </div>
+        </div>
+        <p>Перед импортом HTML-деки на большом мониторе включи полноэкранный режим Chrome — так слайды выйдут чёткими. На небольшом экране слайды получатся чуть мягче — студия об этом предупредит.</p>
+        <p>PowerPoint (PPTX) виден в списке с пометкой «нужна конвертация», но не выбирается — сначала сохрани его как PDF.</p>
+      </div>
     </div>
 
     <div class="sub-sec" id="g-panel">
