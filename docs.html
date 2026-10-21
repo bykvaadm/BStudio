@@ -18,6 +18,10 @@ header.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-
 header.top h1{margin:0;font-size:26px;line-height:1.25;}
 a.tostudio{display:inline-block;padding:9px 14px;border-radius:10px;background:var(--btn);color:var(--txt);text-decoration:none;font-size:15px;}
 a.tostudio:hover{background:var(--btn2);}
+.downloads{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0;}
+.downloads>div{padding:16px;border:1px solid var(--line);border-radius:12px;background:#0e0f14;}
+.downloads p{margin:10px 0 0;font-size:14px;color:var(--sub);}
+.downloads a{font-weight:600;}
 h2{font-size:24px;line-height:1.3;margin:6px 0 10px;}
 h3{font-size:19px;line-height:1.35;margin:30px 0 8px;}
 p,li{color:#d6d8dd;}
@@ -187,8 +191,8 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
 
   <figure class="cover"><img class="cover" src="docs/img/hero-slides.webp" alt="Девушка рассказывает по слайдам: на мониторе презентация с диаграммами, в углу — её камера" width="1280" height="720" loading="lazy"></figure>
 
-  <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: папка deck_frames с картинками p-01.png, p-02.png…, файл 03-script.md, а после записи — видео lecture-….mp4" loading="lazy">
-    <figcaption>Папка урока. Для записи без суфлёра хватит одних картинок — файл <code>03-script.md</code> не нужен.</figcaption></figure>
+  <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: папка deck_frames с картинками p-01.png, p-02.png…, файл prompt.txt, а после записи — видео lecture-….mp4" loading="lazy">
+    <figcaption>Папка урока. Для записи без суфлёра хватит одних картинок — файл <code>prompt.txt</code> не нужен.</figcaption></figure>
 
   <ol class="steps">
     <li>Положи слайды в папку урока: картинки, PDF или HTML-деку — см. <a href="#g-sources">«Три способа подать слайды»</a>.</li>
@@ -214,15 +218,34 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
 
   <figure class="cover"><img class="cover" src="docs/img/hero-prompter.webp" alt="Человек говорит в камеру, а над монитором плывёт текст суфлёра с подсвеченной строкой" width="1280" height="720" loading="lazy"></figure>
 
+  <div class="downloads" aria-label="Шаблоны текста суфлёра">
+    <div><a class="tostudio" href="docs/templates/prompt.txt" download>⬇ Скачать шаблон prompt.txt</a><p>Обычный текстовый файл. Бери этот, если не знаешь, что такое Markdown: открывается Блокнотом и TextEdit</p></div>
+    <div><a class="tostudio" href="docs/templates/prompt.md" download>⬇ prompt.md</a><p>То же самое для тех, кто пишет в Markdown (Obsidian, Typora, VS Code)</p></div>
+  </div>
+  <p class="lead"><small>Студия сама найдёт в папке урока файл <code>prompt.txt</code>, <code>prompt.md</code> или <code>03-script.md</code>. Держи его именно в папке урока, а не в общей папке курса.</small></p>
+
+  <div class="tip"><p><b>Как редактировать.</b> Скачай шаблон → положи в папку урока рядом со слайдами → открой двойным кликом в Блокноте (Windows) или TextEdit (Mac) → замени текст, строки «### Слайд…» оставь → сохрани, не меняя имени.</p>
+    <p>Новый файл в TextEdit по умолчанию — не простой текст. Выбери меню «Формат → Сделать простым текстом». Проще начинать со скачанного шаблона.</p></div>
+
   <ol class="steps">
     <li>Положи слайды в папку урока — см. <a href="#g-sources">«Три способа подать слайды»</a>.</li>
-    <li>Рядом со слайдами положи текстовый файл <code>03-script.md</code> (имя именно такое).</li>
+    <li>Рядом со слайдами положи заполненный шаблон <code>prompt.txt</code>.</li>
     <li>Текст для первой картинки (титула) пиши под строкой <code>## Титульный слайд</code>. Для каждой следующей картинки — строка-заголовок <code>### Слайд 1.1 — …</code>, <code>### Слайд 1.2 — …</code> и так далее (номер — два числа через точку), а под ней — что говорить. Блоки идут по порядку: первый — первой картинке, второй — второй. Пример ниже.</li>
-    <li>Дальше как обычно: <b class="ui">«📁 Выбрать папку»</b> → <b class="ui">«Урок»</b> → <b class="ui">«Слайды»</b> → <b class="ui go">«▶ Поехали»</b> → <b class="ui">«📷 вкл»</b>.</li>
+    <li>Дальше как обычно: <b class="ui">«📁 Выбрать папку»</b> → <b class="ui">«Урок»</b> → <b class="ui">«Слайды»</b> → проверь файл в строке <b class="ui">«Текст суфлёра»</b> → <b class="ui go">«▶ Поехали»</b> → <b class="ui">«📷 вкл»</b>.</li>
     <li>Нажми <b class="ui rec">«⏺ Запись»</b>, а потом запусти текст: <kbd>Пробел</kbd> или клик по тексту суфлёра.</li>
     <li>Скорость текста — <kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>Shift</kbd>+<kbd>↓</kbd>. Пауза — снова <kbd>Пробел</kbd>.</li>
     <li>Листай слайды <kbd>→</kbd>, в конце — <b class="ui">«⏹»</b>.</li>
   </ol>
+
+  <div class="tip"><p>Текст лежит под другим именем? Переименовывать не нужно: на стартовом экране в строке <b class="ui">«Текст суфлёра»</b> выбери его из списка или <b class="ui">«📄 Выбрать файл на диске…»</b>. Студия запомнит выбор.</p>
+    <p>Хочешь записать без суфлёра — выбери <b class="ui">«— без текста —»</b>.</p></div>
+
+  <h3>Суфлёр пустой — что проверить</h3>
+  <ul>
+    <li>В строке <b class="ui">«Текст суфлёра»</b> выбран нужный файл, а не <b class="ui">«— без текста —»</b>.</li>
+    <li>В файле есть строки <code>### Слайд 1.1</code> и текст под ними — начни с шаблона выше.</li>
+    <li>Файл сохранён как простой текст: <code>.txt</code> или <code>.md</code>, а не <code>.rtf</code> или <code>.docx</code>.</li>
+  </ul>
 
   <h3>Как выглядит файл с текстом</h3>
 <pre><span class="h">## Титульный слайд</span>
@@ -285,15 +308,15 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
 
     <div class="sub-sec" id="g-prep">
       <h3>Подготовка урока</h3>
-      <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: deck_frames с картинками p-01.png…, файл 03-script.md и готовое видео lecture-….mp4" loading="lazy"></figure>
+      <figure><img src="docs/img/lesson-folder.svg" alt="Папка урока: deck_frames с картинками p-01.png…, файл prompt.txt и готовое видео lecture-….mp4" loading="lazy"></figure>
       <ol class="steps">
         <li>Заведи папку под урок (несколько уроков — несколько папок внутри одной папки курса).</li>
         <li>Положи туда слайды — картинками, PDF или HTML-декой из Claude Design (подробно — ниже, <a href="#g-sources">«Три способа подать слайды»</a>).</li>
-        <li>Если нужен суфлёр — добавь <code>03-script.md</code> (как писать — в разделе <a href="#prompter">«Лекция с суфлёром»</a>).</li>
+        <li>Если нужен суфлёр — добавь <code>prompt.txt</code> (как писать — в разделе <a href="#prompter">«Лекция с суфлёром»</a>).</li>
         <li>На стартовом экране выбери формат: <b class="ui">«MP4»</b> (играется везде — бери его) или <b class="ui">«WebM»</b>.</li>
       </ol>
-      <div class="tip"><p>Слайды обязательны, текст — по желанию. Папка, где лежит только <code>03-script.md</code> без слайдов, в список уроков не попадёт.</p>
-        <p>Урок без текста помечен в списке «— без речитатива»: суфлёра не будет, всё остальное работает.</p>
+      <div class="tip"><p>Слайды обязательны, текст — по желанию. Папка, где лежит только <code>prompt.txt</code> без слайдов, в список уроков не попадёт.</p>
+        <p>Урок, где студия не нашла <code>prompt.txt</code>, помечен в списке «— нет prompt.txt». Без текста суфлёра не будет, всё остальное работает; свой файл можно выбрать в строке «Текст суфлёра».</p>
         <p>В следующий раз папку не нужно искать: на стартовом экране будет <b class="ui">«↩ Открыть последнюю папку»</b>.</p></div>
 
       <div class="sources" id="g-sources">
@@ -354,7 +377,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
         <li>Кнопка-звёздочка — передвинуть камеру в другой угол; кнопка зеркала; кнопка «человек в рамке» — камера на весь экран.</li>
         <li><b class="ui">«▭»</b> / <b class="ui">«◯»</b> — прямоугольник или круг.</li>
         <li>Ползунки <b class="ui">«размер»</b>, <b class="ui">«зум»</b>, <b class="ui">«↔ сдвиг»</b>, <b class="ui">«↕ сдвиг»</b>; <b class="ui">«сброс камеры»</b> — вернуть как было.</li>
-        <li><b class="ui">«📷→скрипт»</b> — запомнить, как стоит камера на этом слайде (запишется в <code>03-script.md</code>).</li>
+        <li><b class="ui">«📷→скрипт»</b> — запомнить, как стоит камера на этом слайде (запишется в выбранный файл текста суфлёра).</li>
       </ul>
 
       <h3><span class="grpname">суфлёр</span></h3>
@@ -437,7 +460,7 @@ footer{margin-top:40px;color:var(--mute);font-size:13px;text-align:center;}
         <tr><td>«⚠ экран без звука»</td><td>Выключи <b class="ui">«🖥 экран»</b>, проверь <b class="ui">«звук экрана»</b>, включи трансляцию снова и поставь галочку звука.</td></tr>
         <tr><td>Картинка в картинке до бесконечности</td><td>Ты транслируешь монитор, где открыта студия. Выбери другой монитор или окно.</td></tr>
         <tr><td>Клавиши не реагируют</td><td>Кликни по слайду: курсор остался в ползунке или списке.</td></tr>
-        <tr><td>Нет суфлёра</td><td>Проверь, что файл называется <code>03-script.md</code> и лежит в папке урока, а заголовки — <code>### Слайд 1.1 — …</code>. Или суфлёр спрятан — нажми <b class="ui">«👁»</b>.</td></tr>
+        <tr><td>Нет суфлёра</td><td>В строке <b class="ui">«Текст суфлёра»</b> выбери нужный файл вместо <b class="ui">«— без текста —»</b>. Проверь, что в нём есть строки <code>### Слайд 1.1</code> и он сохранён как простой текст (<code>.txt</code>/<code>.md</code>, не <code>.rtf</code>/<code>.docx</code>). См. <a href="#prompter">шаблон и проверку суфлёра</a>. Или суфлёр спрятан — нажми <b class="ui">«👁»</b>.</td></tr>
         <tr><td>PPTX в списке, но не выбирается</td><td>Сохрани презентацию как PDF или картинки и положи в папку урока.</td></tr>
       </table>
     </div>

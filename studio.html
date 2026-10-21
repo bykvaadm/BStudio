@@ -25,6 +25,7 @@ button.go{background:var(--acc);color:#111;font-weight:700;}
 #restoreBox button{background:#1f2733;}
 .msg{margin-top:14px;color:#9aa0a8;font-size:13px;min-height:18px;line-height:1.5;}
 .msg.err{color:#ff7a6e;}
+.msg a{color:var(--acc);}
 /* Ссылки на документацию: выглядят как кнопки студии, открываются в новой вкладке. */
 a.big{display:block;width:100%;padding:14px;border-radius:12px;background:var(--btn);color:var(--txt);font-size:16px;text-align:center;text-decoration:none;margin-top:14px;}
 a.big:hover{background:var(--btn2);}
@@ -237,7 +238,7 @@ input[type=range]{width:90px;}
 
 <div id="setup"><div class="card">
   <h1>🎬 BStudio</h1>
-  <p class="sub">Укажи папку курса — или просто любую папку с картинками; а если слайдов нет вовсе, транслируй экран. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из <code>03-script.md</code>, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
+  <p class="sub">Укажи папку курса — или просто любую папку с картинками; а если слайдов нет вовсе, транслируй экран. Студия собирает <b>все</b> найденные варианты: <code>deck_frames/</code>, каждый PDF и каждую папку с картинками. Речитатив — из файла текста (<code>prompt.txt</code>) в папке урока, если он есть; без него суфлёр молчит, остальное работает. Нужен Chrome.</p>
   <div id="restoreBox" style="display:none"></div>
   <label>Формат записи</label>
   <div class="seg">
@@ -251,6 +252,8 @@ input[type=range]{width:90px;}
     <select id="lessonSel"></select>
     <label>Слайды</label>
     <select id="sourceSel"></select>
+    <label>Текст суфлёра</label>
+    <select id="scriptSel"></select>
     <button id="go" class="big go">▶ Поехали</button>
   </div>
   <div class="or">или без слайдов</div>
@@ -517,16 +520,27 @@ function sourceLabel(src){
   return `${src.name} — PPTX, нужна конвертация`;
 }
 
-/* Урок — папка, где есть речитатив 03-script.md ИЛИ хоть что-нибудь рисуемое.
+/* Файл текста по умолчанию — любое из имён, по старшинству: старые уроки с
+   03-script.md ведут себя как раньше. Регистр не важен. */
+const SCRIPT_NAMES=["03-script.md","prompt.md","prompt.txt"];
+// UTF-8; если байты не складываются в UTF-8 — файл в ANSI (старый Блокнот), читаем как windows-1251.
+async function readText(h){const buf=await (await h.getFile()).arrayBuffer();try{return {text:new TextDecoder("utf-8",{fatal:true}).decode(buf),ansi:false};}catch(e){return {text:new TextDecoder("windows-1251").decode(buf),ansi:true};}}
+
+/* Урок — папка, где есть файл текста (prompt.txt и др.) ИЛИ хоть что-нибудь рисуемое.
    Речитатив необязателен: без него суфлёр пустой, а слайды, камера и запись
    работают как обычно. Поэтому студии можно скормить и голую папку с
    картинками — она откроется как урок без текста. */
 async function scanLessons(root){
   const found=[];
   async function walk(dir,rel){
-    let scriptHandle=null; const subs=[];
+    let scriptHandle=null, scriptName=null, rank=SCRIPT_NAMES.length; const subs=[], texts=[];
     for await (const [name,h] of dir.entries()){
-      if(h.kind==="file" && name==="03-script.md") scriptHandle=h;
+      if(h.kind==="file"){
+        const n=name.toLowerCase(), r=SCRIPT_NAMES.indexOf(n);
+        if(r>=0 && r<rank){ scriptHandle=h; scriptName=name; rank=r; }
+        // Кандидаты для строки «Текст суфлёра»; отметки записи (*.markers.txt) — не текст.
+        if(/\.(txt|md)$/.test(n) && !n.startsWith(".") && !n.endsWith(".markers.txt")) texts.push([name,h]);
+      }
       else if(h.kind==="directory" && !name.startsWith(".") && name!=="node_modules" && name!=="assets" && name!=="deck_frames") subs.push([name,h]);
     }
     const sources=await findDeckSources(dir);
@@ -534,7 +548,8 @@ async function scanLessons(root){
     if(scriptHandle || drawable){
       found.push({
         name: rel||"(корень)",
-        scriptHandle,
+        scriptHandle, scriptName,
+        texts: texts.sort((a,b)=>a[0].localeCompare(b[0])),
         sources,
         dirHandle: dir,
         // PPTX виден в списке, но сам по себе урок готов, только если есть хоть
@@ -802,7 +817,7 @@ async function htmlDeckToFrames(src, say){
   say("Разреши студии снять эту вкладку: в окне Chrome выбери «Эта вкладка» → «Поделиться».");
   let stream;
   try{ stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"browser",frameRate:30},audio:false,preferCurrentTab:true,selfBrowserSurface:"include",surfaceSwitching:"exclude"}); }
-  catch(e){ throw new Error("Без разрешения снять вкладку HTML-деку в кадры не перевести. Нажми «Начать» ещё раз и выбери «Эта вкладка»."); }
+  catch(e){ throw new Error("Chrome не дал снять вкладку — без этого HTML-деку в кадры не перевести. Так бывает, если перед этим отвечал на вопрос о доступе к файлу. Нажми «▶ Поехали» ещё раз и выбери «Эта вкладка»."); }
 
   const track=stream.getVideoTracks()[0];
   const wrap=document.createElement("div"), note=document.createElement("div"), stage=document.createElement("div"), fr=document.createElement("iframe"), vid=document.createElement("video");
@@ -879,7 +894,7 @@ async function htmlDeckToFrames(src, say){
     try{ cropTarget=await CropTarget.fromElement(fr); }
     catch(e){ throw new Error("Не смог подготовить обрезку кадра. Попробуй ещё раз."); }
     try{ await track.cropTo(cropTarget); }
-    catch(e){ throw new Error("Похоже, ты поделился не той вкладкой. Нажми «Начать» ещё раз и в окне Chrome выбери именно «Эта вкладка»."); }
+    catch(e){ throw new Error("Похоже, ты поделился не той вкладкой. Нажми «▶ Поехали» ещё раз и в окне Chrome выбери именно «Эта вкладка»."); }
 
     vid.muted=true; vid.srcObject=stream;
     const played=await Promise.race([ vid.play().then(()=>true,()=>false), new Promise(r=>setTimeout(()=>r(false),5000)) ]);
@@ -892,7 +907,7 @@ async function htmlDeckToFrames(src, say){
       let done=false; const t=setTimeout(()=>{ if(!done){done=true; r(false);} }, ms||4000);
       vid.requestVideoFrameCallback(()=>{ if(!done){done=true; clearTimeout(t); r(true);} });
     });
-    if(!(await nextFrame(8000))) throw new Error("Chrome не отдаёт кадры снятой вкладки — похоже, ты поделился не той вкладкой. Нажми «Начать» и выбери именно «Эта вкладка».");
+    if(!(await nextFrame(8000))) throw new Error("Chrome не отдаёт кадры снятой вкладки — похоже, ты поделился не той вкладкой. Нажми «▶ Поехали» и выбери именно «Эта вкладка».");
 
     // goTo — тоже почтой: ставим слайд и ждём два requestAnimationFrame внутри
     // песочницы (мост подтверждает после них), чтобы не снять кадр раньше кадра.
@@ -990,7 +1005,7 @@ async function htmlDeckToFrames(src, say){
 
     // «Разверни окно» подсказываем, только если окно и правда не развёрнуто:
     // на экране меньше 1920 точек разворачивать уже некуда, совет вводил бы в
-    // заблуждение — в этом случае честно предупредили ещё до «Начать».
+    // заблуждение — в этом случае честно предупредили ещё до «▶ Поехали».
     if(lowRes && fullscreenWouldHelp()) setTimeout(()=>alert("Кадры сняты меньше 1920×1080. Включи полноэкранный режим Chrome (на Mac — зелёная кнопка в углу окна, на Windows — F11) и импортируй ещё раз, чтобы слайды вышли чёткими."),0);
     return {urls, manifest};
   } catch(e){
@@ -1019,7 +1034,7 @@ async function htmlDeckToFrames(src, say){
 let DECKSIZE={w:1920,h:1080};
 function imgSize(url){return new Promise(res=>{const im=new Image();im.onload=()=>res({w:im.naturalWidth,h:im.naturalHeight});im.onerror=()=>res(null);im.src=url;});}
 
-async function loadLesson(lesson, src){
+async function loadLesson(lesson, src, md){
   src = src || (lesson.sources||[]).find(x=>x.kind!=="pptx");
   if(!src) throw new Error("В этой папке нечего показывать: нет ни deck_frames/, ни PDF, ни HTML-деки, ни картинок.");
   if(src.kind==="pptx") throw new Error(
@@ -1082,7 +1097,8 @@ async function loadLesson(lesson, src){
   DECKSIZE=big||{w:1920,h:1080};
 
   // Речитатива может не быть вовсе — тогда все слайды просто без текста.
-  const slides=lesson.scriptHandle ? parseScript(await (await lesson.scriptHandle.getFile()).text()) : [];
+  // Текст уже прочитан при запуске (resolveScript): md — строка или null.
+  const slides=md!=null ? parseScript(md) : [];
   const byId={}; slides.forEach(s=>byId[s.id]=s);
   // id из manifest используем, только если большинство непустых нашлось в
   // речитативе; иначе (в том числе когда непустых id нет) — текст по порядку,
@@ -1120,9 +1136,9 @@ async function afterCourse(handle){
   try{
     LESSONS=await scanLessons(handle);
     const ready=LESSONS.filter(l=>l.ready);
-    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF, HTML-дека Claude Design или deck_frames/ с кадрами; речитатив 03-script.md рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":"")+" Слайды не нужны? Жми «🖥 Транслировать экран» — запись ляжет в эту папку."; $("#setupMsg").className="msg err"; $("#lessonBox").style.display="none"; return; }
+    if(!ready.length){ $("#setupMsg").textContent="Не нашёл, что показывать. Подойдёт папка с картинками, PDF, HTML-дека Claude Design или deck_frames/ с кадрами; файл текста prompt.txt рядом — по желанию."+(LESSONS.some(l=>l.hint)?" PPTX найден, но его надо сконвертировать в PDF.":"")+" Слайды не нужны? Жми «🖥 Транслировать экран» — запись ляжет в эту папку."; $("#setupMsg").className="msg err"; $("#lessonBox").style.display="none"; return; }
     const sel=$("#lessonSel"); sel.innerHTML="";
-    ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name+(l.scriptHandle?"":" — без речитатива"); sel.appendChild(o); });
+    ready.forEach((l,i)=>{ const o=document.createElement("option"); o.value=String(LESSONS.indexOf(l)); o.textContent=l.name+(l.scriptHandle?"":" — нет prompt.txt"); sel.appendChild(o); });
     const last=LS("lastLesson",null); if(last!=null){ const idx=LESSONS.findIndex(l=>l.name===last&&l.ready); if(idx>=0) sel.value=String(idx); }
     $("#lessonBox").style.display="block";
     // Текст статус-строки отдаём fillSources()/updateSourceHint() — они сами
@@ -1148,8 +1164,9 @@ function fillSources(){
   const idx=(lesson.sources||[]).findIndex(x=>x.name===remembered && x.kind!=="pptx");
   ss.value=String(idx>=0?idx:(lesson.sources||[]).findIndex(x=>x.kind!=="pptx"));
   ss.onchange=updateSourceHint; updateSourceHint();
+  fillScript();
 }
-// HTML-деку студия снимает через захват вкладки сразу по клику «Начать» —
+// HTML-деку студия снимает через захват вкладки сразу по клику «▶ Поехали» —
 // подсказка про это должна быть видна именно тут, а не только всплывать
 // alert'ом постфактум; при выборе не-HTML источника гаснет обратно в обычный
 // счётчик уроков (иначе подсказка про HTML-деку осталась бы висеть даже после
@@ -1159,6 +1176,67 @@ function updateSourceHint(){
   const msg=$("#setupMsg");
   if(src && src.kind==="html"){ msg.textContent=htmlHintText(); msg.className="msg"; }
   else{ msg.textContent=LESSONS.filter(l=>l.ready).length+" урок(ов) найдено."; msg.className="msg"; }
+  if(scriptWarn) msg.insertAdjacentHTML("beforeend","<br>"+EMPTY_SCRIPT_HTML);
+}
+
+/* Строка «Текст суфлёра»: файл по умолчанию, остальные .txt/.md прямо в папке
+   урока, файл с диска, «без текста». Выбор помнится по уроку: значение пункта —
+   в localStorage, хендл файла с диска — в IndexedDB (после перезагрузки он
+   снова спросит доступ, это делает resolveScript по клику «▶ Поехали»). */
+const EMPTY_SCRIPT_HTML='В файле нет строк «### Слайд 1.1» — суфлёр будет пустым. <a href="docs.html#prompter" target="_blank" rel="noopener">Скачай шаблон в документации.</a>';
+let scriptGen=0, scriptWarn=false;
+const scriptOpt=(v,t)=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; return o; };
+async function fillScript(){
+  const lesson=LESSONS[+$("#lessonSel").value], sel=$("#scriptSel"), my=++scriptGen, mem=LS("txt:"+lesson.name,null);
+  scriptWarn=false;
+  if(mem==="d" && !lesson.disk){ try{ lesson.disk=await idbGet("txt:"+lesson.name)||null; }catch(e){} if(my!==scriptGen) return; }
+  sel.innerHTML="";
+  const names=(lesson.texts||[]).map(t=>t[0]).filter(n=>n!==lesson.scriptName);
+  if(lesson.scriptName) names.unshift(lesson.scriptName);
+  names.forEach(n=>sel.appendChild(scriptOpt("f:"+n,n)));
+  if(lesson.disk) sel.appendChild(scriptOpt("d",lesson.disk.name+" (с диска)"));
+  sel.appendChild(scriptOpt("pick","📄 Выбрать файл на диске…"));
+  sel.appendChild(scriptOpt("none","— без текста —"));
+  const ok=mem && mem!=="pick" && [...sel.options].some(o=>o.value===mem);
+  sel.value=ok?mem:(lesson.scriptName?"f:"+lesson.scriptName:"none"); sel.dataset.prev=sel.value;
+  sel.onchange=onScriptSel; checkScript();
+}
+async function onScriptSel(){
+  const sel=$("#scriptSel"), lesson=LESSONS[+$("#lessonSel").value];
+  if(sel.value==="pick"){
+    let h=null;
+    try{ [h]=await window.showOpenFilePicker({startIn:lesson.dirHandle,types:[{description:"Текст суфлёра",accept:{"text/plain":[".txt",".md"]}}]}); }
+    catch(e){ if(e.name!=="AbortError"){ const m=$("#setupMsg"); m.textContent="Не открылось окно выбора файла: "+e.message+". Выбери пункт ещё раз."; m.className="msg err"; } }
+    if(!h){ sel.value=sel.dataset.prev; return; }
+    // Файл из самой папки урока — обычный пункт списка, хендл не нужен.
+    for(const [n,t] of (lesson.texts||[])){ try{ if(await t.isSameEntry(h)){ sel.value="f:"+n; break; } }catch(e){} }
+    if(sel.value==="pick"){ lesson.disk=h; try{ await idbSet("txt:"+lesson.name,h); }catch(e){} save("txt:"+lesson.name,"d"); return fillScript(); }
+  }
+  save("txt:"+lesson.name,sel.value); sel.dataset.prev=sel.value; checkScript();
+}
+function pickedScript(lesson){
+  const v=$("#scriptSel").value; if(v==="d") return lesson.disk||null;
+  const t=(lesson.texts||[]).find(x=>"f:"+x[0]===v); return t?t[1]:null;
+}
+// Файл выбран, а блоков «### Слайд» ноль — предупреждаем заранее, запуск не держим.
+// Файл с диска без выданного доступа здесь не читаем: спрашивать доступ без клика нельзя.
+async function checkScript(){
+  const lesson=LESSONS[+$("#lessonSel").value], h=pickedScript(lesson), my=++scriptGen;
+  scriptWarn=false; updateSourceHint();
+  if(!h) return;
+  let empty=false;
+  try{ if(await h.queryPermission({mode:"read"})!=="granted") return; empty=!parseScript((await readText(h)).text).length; }catch(e){ return; }
+  if(my!==scriptGen) return;
+  scriptWarn=empty; updateSourceHint();
+}
+// Текст для запуска. Отказ в доступе или пропавший файл — едем без текста, с пояснением.
+async function resolveScript(lesson){
+  const h=pickedScript(lesson); if(!h) return {h:null,md:null,note:""};
+  try{
+    if(await h.queryPermission({mode:"read"})!=="granted" && await h.requestPermission({mode:"read"})!=="granted")
+      return {h:null,md:null,note:"Нет доступа к файлу «"+h.name+"» — суфлёр будет пустым. Разреши доступ или выбери файл заново в строке «Текст суфлёра»."};
+    const r=await readText(h); return {h,md:r.text,ansi:r.ansi,note:""};
+  }catch(e){ return {h:null,md:null,note:"Не открылся файл «"+h.name+"» ("+e.message+") — суфлёр будет пустым. Выбери файл заново в строке «Текст суфлёра»."}; }
 }
 
 /* «Поехали» и «Транслировать экран» — два входа в одну студию, и оба долгие:
@@ -1178,11 +1256,15 @@ async function startSelectedInner(){
   if(!src||src.kind==="pptx"){ $("#setupMsg").textContent="Этот источник студия не нарисует — сконвертируйте PPTX в PDF (pptx-to-pdf.command)."; $("#setupMsg").className="msg err"; return; }
   $("#setupMsg").textContent=(src.kind==="pdf")?"Рендерю PDF…":(src.kind==="html")?"Открываю HTML-деку…":"Загружаю кадры…"; $("#setupMsg").className="msg";
   try{
-    const next=await loadLesson(lesson, src);
+    // Текст — до деки: доступ к файлу с диска просим, пока клик «▶ Поехали» свежий.
+    const txt=await resolveScript(lesson);
+    const next=await loadLesson(lesson, src, txt.md);
     /* Открыли урок с декой — значит, показывать собрались слайды. Экран,
        оставшийся включённым с прошлого захода, молча лёг бы в запись вместо
        них; понадобится — «🖥 экран» включит его обратно одним нажатием. */
     stopScreen();
+    lesson.textHandle=txt.h;
+    if(txt.md!=null && !parseScript(txt.md).length){ scriptWarn=true; updateSourceHint(); }
     releaseDeck(); SLIDES=next; CURLESSON=lesson; SCREENONLY=false; hideFolderBtn();
     /* Штрихи ключуются номером слайда, поэтому при смене деки их надо снести:
        иначе рисунок со слайда 1 прошлого урока всплывёт на слайде 1 нового и
@@ -1191,7 +1273,7 @@ async function startSelectedInner(){
     save("lastLesson",lesson.name);
     if(src.kind==="html"){
       // После импорта запоминаем выбор КАК КАДРЫ, а не как HTML: следующее
-      // «Начать» откроет уже готовые deck_frames/ без повторной съёмки. Путь
+      // «▶ Поехали» откроет уже готовые deck_frames/ без повторной съёмки. Путь
       // собираем тем же правилом, что и framesIn — deck_frames рядом с деки.
       save("src:"+lesson.name, (src.sub?src.sub+"/":"")+"deck_frames");
       // lesson.sources ещё старый (deck_frames в нём мог не существовать до
@@ -1200,7 +1282,7 @@ async function startSelectedInner(){
     }else{
       save("src:"+lesson.name, src.name);
     }
-    const warn=(src.kind==="pdf")?pdfWarningText():"";
+    const warn=[(src.kind==="pdf")?pdfWarningText():"", txt.note].filter(Boolean).join("\n\n");
     if(warn){ alert("⚠ "+warn); }
     $("#setup").style.display="none"; $("#bar").style.display="flex";
     startStudio();
@@ -1331,7 +1413,8 @@ function applySlideCam(){const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;const c=
 function camHint(){const el=$("#camhint");if(!el)return;const m=(SLIDES[st.i]&&SLIDES[st.i].cam)||null;if(!m){el.style.display="none";return;}const d=[],cl=v=>Math.min(0.42,Math.max(0.14,v)),cz=v=>Math.min(2.5,Math.max(1,v));if(m.shape&&m.shape!==st.camShape)d.push("форма: "+(m.shape==="circle"?"круг":"прямоуг."));if(m.corner&&m.corner!==st.corner)d.push("позиция "+(CAMSEQ.indexOf(m.corner)+1));if(m.size!=null&&Math.abs(cl(m.size)-st.camSize)>0.01)d.push("размер "+Math.round(cl(m.size)*100)+"%");if(m.full!=null&&m.full!==st.camFull)d.push(m.full?"на весь экран":"в углу");if(m.zoom!=null&&Math.abs(cz(m.zoom)-st.camZoom)>0.05)d.push("зум "+cz(m.zoom).toFixed(1)+"×");if(m.on===false&&!st.camHide)d.push("скрыть камеру");if(m.on===true&&st.camHide)d.push("показать камеру");if(d.length){el.textContent="📷 рекомендуется: "+d.join(" · ");clearTimeout(camHintTimer);el.style.display="block";camHintTimer=setTimeout(()=>{el.style.display="none";},6000);}else el.style.display="none";}
 function slideCam(){applySlideCam();camHint();}
 async function saveCamToScript(){
-  if(!CURLESSON||!CURLESSON.scriptHandle){alert("У этого урока нет 03-script.md — meta:camera писать некуда.");return;}
+  const th=CURLESSON&&CURLESSON.textHandle;
+  if(!th){alert("У этого урока не выбран файл текста (prompt.txt) — meta:camera писать некуда.");return;}
   const s=SLIDES[st.i], sid=s&&s.id;
   if(!sid){alert("У слайда нет id — meta не пишется.");return;}
   const toks=[];
@@ -1340,7 +1423,10 @@ async function saveCamToScript(){
   else{toks.push("type: "+(st.camShape==="circle"?"round":"rect"));toks.push("position: "+(CAMSEQ.indexOf(st.corner)+1));toks.push("size: "+Math.round(st.camSize*100));if((st.camZoom||1)>1.01)toks.push("zoom: "+(st.camZoom||1).toFixed(1));}
   const metaLine="<!-- meta:camera "+toks.join(", ")+" -->";
   try{
-    const text=await (await CURLESSON.scriptHandle.getFile()).text();
+    // Пишем в выбранный файл, какой бы он ни был; файл с диска открыт только на
+    // чтение — право на запись просим здесь (клик по кнопке — жест).
+    if(await th.queryPermission({mode:"readwrite"})!=="granted" && await th.requestPermission({mode:"readwrite"})!=="granted"){alert("Нет права на запись в «"+th.name+"» — meta не записана.");return;}
+    const rt=await readText(th), text=rt.text;
     const lines=text.split(/\r?\n/);
     let hdr=-1;
     if(sid==="титул"){for(let i=0;i<lines.length;i++){if(/^##\s+Титульн/i.test(lines[i])){hdr=i;break;}}}
@@ -1349,7 +1435,8 @@ async function saveCamToScript(){
     let metaIdx=-1;
     for(let i=hdr+1;i<lines.length;i++){if(/meta:camera/i.test(lines[i])){metaIdx=i;break;}if(/^###\s/.test(lines[i])||/^##\s/.test(lines[i])||lines[i].trim()==="---")break;}
     if(metaIdx>=0){lines[metaIdx]=metaLine;}else{const ins=[metaLine];if(lines.length>hdr+1&&lines[hdr+1].trim()!=="")ins.push("");lines.splice(hdr+1,0,...ins);}
-    const w=await CURLESSON.scriptHandle.createWritable();await w.write(lines.join("\n"));await w.close();
+    // ANSI-файл уходит обратно в UTF-8 с BOM — так его прочтёт и старый Блокнот.
+    const w=await th.createWritable();await w.write((rt.ansi?"\uFEFF":"")+lines.join("\n"));await w.close();
     s.cam=parseCamMeta(metaLine);
     flashBtn($("#metasavebtn"));
   }catch(e){alert("Не удалось записать в скрипт: "+e.message);}
